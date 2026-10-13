@@ -11,6 +11,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -21,7 +22,7 @@ import lombok.Setter;
 @Table(name = "courses")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class Course {
 
 	@Id
@@ -54,10 +55,21 @@ public class Course {
 	private Quiz finalQuiz;
 
 	@Setter(AccessLevel.NONE)
-	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+	@Column(name = "created_at", nullable = false, updatable = false)
 	private OffsetDateTime createdAt;
 
 	@Setter(AccessLevel.NONE)
-	@Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
+	@Column(name = "updated_at", nullable = false, updatable = false)
 	private OffsetDateTime updatedAt;
+
+	@PrePersist
+	void onPersist() {
+		OffsetDateTime now = OffsetDateTime.now();
+		if (createdAt == null) {
+			createdAt = now;
+		}
+		if (updatedAt == null) {
+			updatedAt = now;
+		}
+	}
 }
