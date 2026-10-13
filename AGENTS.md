@@ -2,6 +2,12 @@
 
 Project-specific instructions for coding agents working on this repository.
 
+## Coding conventions
+
+Follow `docs/java-coding-conventions.md` for Java naming, layering, REST/JPA,
+Lombok, testing, and formatting conventions. Do not contradict that document
+without an explicit project decision.
+
 ## Stack
 
 - Java 17

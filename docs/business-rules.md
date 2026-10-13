@@ -22,18 +22,33 @@ Status legend used below:
 - Instructors may view detailed assessment results for students in courses
   they manage.
 - Students must not see other students’ detailed answers.
+- Public self-registration always creates a `STUDENT` account. Clients cannot
+  assign `INSTRUCTOR` or `ADMIN` via registration.
+- Authentication uses JWT bearer tokens (stateless). Passwords are stored
+  only as BCrypt hashes.
+- **Only `ADMIN` may create courses** (authorization foundation). Course
+  `instructor_id` may still reference an `INSTRUCTOR` (or `ADMIN`) user as
+  the course owner; the create API itself is ADMIN-only.
+
+- User management authorization (implemented): create user, list users, and
+  lookup by email are `ADMIN` only; a user may read or update only their own
+  profile (name, avatar) and cannot change their own role or `active` flag;
+  `ADMIN` may update any user's profile and `active` flag. No endpoint changes
+  an existing user's role.
 
 ### Unresolved
 
-- Exact permission matrix per role (what ADMIN may do beyond instructor/student).
-- Authentication mechanism (session, JWT, etc.) and password policy.
+- Exact permission matrix for remaining course mutations (update/unpublish
+  ownership rules for instructor vs admin).
+- Password policy beyond minimum length enforced at the API.
 - Whether a user may hold only one role or multiple roles over time.
+- Refresh tokens, password reset, and email verification (out of current scope).
 
 ### Schema / code mismatch
 
-- `users.password_hash` and `role` exist; Spring Security starter is on the
-  classpath, but no application security configuration or authorization
-  services are implemented yet.
+- Role changes and elevated account provisioning (e.g. creating an INSTRUCTOR)
+  are not exposed via public APIs in the security foundation; use controlled
+  admin processes when those features are added.
 
 ---
 
