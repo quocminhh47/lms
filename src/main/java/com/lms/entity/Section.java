@@ -18,7 +18,7 @@ import lombok.Setter;
 @Table(name = "sections")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class Section {
 
 	@Id

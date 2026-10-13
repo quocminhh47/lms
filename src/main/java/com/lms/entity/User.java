@@ -8,24 +8,29 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "users")
+@Table(
+		name = "users",
+		uniqueConstraints = @UniqueConstraint(name = "uq_users_email", columnNames = "email"))
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class User {
 
 	@Id
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
 
-	@Column(name = "email", nullable = false, unique = true)
+	@Column(name = "email", nullable = false)
 	private String email;
 
 	@Column(name = "password_hash", nullable = false)
@@ -45,10 +50,26 @@ public class User {
 	private boolean active = true;
 
 	@Setter(AccessLevel.NONE)
-	@Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+	@Column(name = "created_at", nullable = false, updatable = false)
 	private OffsetDateTime createdAt;
 
 	@Setter(AccessLevel.NONE)
-	@Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
+	@Column(name = "updated_at", nullable = false)
 	private OffsetDateTime updatedAt;
+
+	@PrePersist
+	void onPersist() {
+		OffsetDateTime now = OffsetDateTime.now();
+		if (createdAt == null) {
+			createdAt = now;
+		}
+		if (updatedAt == null) {
+			updatedAt = now;
+		}
+	}
+
+	@PreUpdate
+	void onUpdate() {
+		updatedAt = OffsetDateTime.now();
+	}
 }
