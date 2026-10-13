@@ -20,7 +20,7 @@ import lombok.Setter;
 @Table(name = "lessons")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class Lesson {
 
 	@Id

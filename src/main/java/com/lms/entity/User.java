@@ -9,14 +9,18 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Table(name = "users")
+@Table(
+		name = "users",
+		uniqueConstraints = @UniqueConstraint(name = "uq_users_email", columnNames = "email"))
 @Getter
 @Setter
 @NoArgsConstructor(access = AccessLevel.PUBLIC)
@@ -26,7 +30,7 @@ public class User {
 	@Column(name = "id", nullable = false, updatable = false)
 	private UUID id;
 
-	@Column(name = "email", nullable = false, unique = true)
+	@Column(name = "email", nullable = false)
 	private String email;
 
 	@Column(name = "password_hash", nullable = false)
@@ -50,7 +54,7 @@ public class User {
 	private OffsetDateTime createdAt;
 
 	@Setter(AccessLevel.NONE)
-	@Column(name = "updated_at", nullable = false, updatable = false)
+	@Column(name = "updated_at", nullable = false)
 	private OffsetDateTime updatedAt;
 
 	@PrePersist
@@ -62,5 +66,10 @@ public class User {
 		if (updatedAt == null) {
 			updatedAt = now;
 		}
+	}
+
+	@PreUpdate
+	void onUpdate() {
+		updatedAt = OffsetDateTime.now();
 	}
 }

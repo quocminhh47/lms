@@ -22,6 +22,10 @@ import com.lms.service.CourseService;
 
 import jakarta.validation.Valid;
 
+/**
+ * Course catalog and admin management. Public callers may only read published
+ * courses; mutations and unpublished visibility are ADMIN-only.
+ */
 @RestController
 @RequestMapping("/api/courses")
 public class CourseController {
@@ -52,10 +56,17 @@ public class CourseController {
 	}
 
 	@PutMapping("/{id}")
+	@PreAuthorize("hasRole('ADMIN')")
 	public CourseResponse update(
 			@PathVariable UUID id,
 			@Valid @RequestBody UpdateCourseRequest request) {
 		return courseService.update(id, request);
+	}
+
+	@PostMapping("/{id}/publish")
+	@PreAuthorize("hasRole('ADMIN')")
+	public CourseResponse publish(@PathVariable UUID id) {
+		return courseService.publish(id);
 	}
 
 	/**
@@ -63,6 +74,7 @@ public class CourseController {
 	 * this is the closest supported operation via {@code is_published}.
 	 */
 	@PostMapping("/{id}/unpublish")
+	@PreAuthorize("hasRole('ADMIN')")
 	public CourseResponse unpublish(@PathVariable UUID id) {
 		return courseService.unpublish(id);
 	}

@@ -36,10 +36,26 @@ Status legend used below:
   `ADMIN` may update any user's profile and `active` flag. No endpoint changes
   an existing user's role.
 
+- Course management authorization (implemented): only `ADMIN` may create,
+  update, publish, or unpublish courses. Unauthenticated callers and
+  non-admin roles may list and retrieve **published** courses only;
+  unpublished courses are visible to `ADMIN` only (non-admins receive 404 on
+  get-by-id). Instructor ownership does not grant unpublished visibility on
+  these public catalog endpoints in the MVP.
+
+- Section and lesson management authorization (implemented): only `ADMIN`
+  may create or update sections and lessons (including `sort_order`).
+  Public callers may read sections/lessons only when the parent course is
+  published; unpublished course content returns 404 for non-admins, including
+  direct `GET /api/lessons/{id}`. Nested routes verify Course → Section →
+  Lesson membership. Hard deletion of sections/lessons is **not** exposed:
+  `lessons`, `lesson_progress`, and `quizzes` reference them without
+  `ON DELETE CASCADE`, and no safe delete policy is confirmed.
+
 ### Unresolved
 
-- Exact permission matrix for remaining course mutations (update/unpublish
-  ownership rules for instructor vs admin).
+- Whether instructors may later manage (update/publish) courses they own
+  via dedicated instructor endpoints (not part of the current public catalog).
 - Password policy beyond minimum length enforced at the API.
 - Whether a user may hold only one role or multiple roles over time.
 - Refresh tokens, password reset, and email verification (out of current scope).
@@ -67,9 +83,9 @@ Status legend used below:
 
 ### Unresolved
 
-- Publishing workflow details beyond `courses.is_published`.
-- Whether unpublished courses are visible to their instructor only, or also
-  to admins.
+- Publishing workflow details beyond `courses.is_published` (MVP uses
+  explicit ADMIN publish/unpublish endpoints plus optional `published` on
+  create/update).
 - Whether lessons/sections have an explicit “required” flag, or all content
   counts toward completion by default.
 - Unlock / sequential navigation rules between sections or lessons (beyond

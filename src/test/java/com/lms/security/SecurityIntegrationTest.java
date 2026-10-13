@@ -7,13 +7,19 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
+
+import jakarta.persistence.EntityManager;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -24,9 +30,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lms.entity.User;
 import com.lms.entity.UserRole;
+import com.lms.exception.ErrorResponse;
+import com.lms.exception.GlobalExceptionHandler;
 import com.lms.repository.UserRepository;
 
 import org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 @SpringBootTest
 class SecurityIntegrationTest {
@@ -44,6 +54,9 @@ class SecurityIntegrationTest {
 
 	@Autowired
 	private JwtService jwtService;
+
+	@Autowired
+	private EntityManager entityManager;
 
 	private MockMvc mockMvc;
 
@@ -214,6 +227,170 @@ class SecurityIntegrationTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("{\"fullName\":\"x\"}"))
 				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void authMe_requiresAuthenticationAndReturnsCurrentUser() throws Exception {
+		User student = seedUser(
+				"me-" + UUID.randomUUID() + "@example.com",
+				"password123",
+				UserRole.STUDENT);
+
+		mockMvc.perform(get("/api/auth/me"))
+				.andExpect(status().isUnauthorized());
+
+		mockMvc.perform(get("/api/auth/me")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(student)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(student.getId().toString()))
+				.andExpect(jsonPath("$.email").value(student.getEmail()))
+				.andExpect(jsonPath("$.fullName").value("Seed User"))
+				.andExpect(jsonPath("$.role").value("STUDENT"))
+				.andExpect(jsonPath("$.active").value(true))
+				.andExpect(jsonPath("$.password").doesNotExist())
+				.andExpect(jsonPath("$.passwordHash").doesNotExist());
+	}
+
+	@Test
+	void authMe_rejectsInactiveUserJwt() throws Exception {
+		User student = seedUser(
+				"me-inact-" + UUID.randomUUID() + "@example.com",
+				"password123",
+				UserRole.STUDENT);
+		User admin = seedUser(
+				"me-inact-adm-" + UUID.randomUUID() + "@example.com",
+				"password123",
+				UserRole.ADMIN);
+		String studentToken = tokenFor(student);
+
+		mockMvc.perform(put("/api/users/" + student.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(admin))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"active\":false}"))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/api/auth/me")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void deactivatedUser_existingJwtIsRejectedOnProtectedEndpoint() throws Exception {
+		User student = seedUser(
+				"deact-" + UUID.randomUUID() + "@example.com",
+				"password123",
+				UserRole.STUDENT);
+		User admin = seedUser(
+				"deact-adm-" + UUID.randomUUID() + "@example.com",
+				"password123",
+				UserRole.ADMIN);
+		String studentToken = tokenFor(student);
+
+		mockMvc.perform(get("/api/users/" + student.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(put("/api/users/" + student.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(admin))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"active\":false}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.active").value(false));
+		assertThat(userRepository.findById(student.getId()).orElseThrow().isActive()).isFalse();
+
+		// JwtAuthenticationFilter skips inactive users, so the request is unauthenticated → 401
+		mockMvc.perform(get("/api/users/" + student.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + studentToken))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void register_rejectsDuplicateEmailWith409() throws Exception {
+		String email = "dup-reg-" + UUID.randomUUID() + "@example.com";
+		seedUser(email, "password123", UserRole.STUDENT);
+
+		mockMvc.perform(post("/api/auth/register")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"%s","password":"password123","fullName":"Dup"}
+								""".formatted(email)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Email already registered"));
+	}
+
+	@Test
+	void createUser_rejectsDuplicateEmailWith409() throws Exception {
+		String email = "dup-create-" + UUID.randomUUID() + "@example.com";
+		seedUser(email, "password123", UserRole.STUDENT);
+		User admin = seedUser(
+				"dup-adm-" + UUID.randomUUID() + "@example.com",
+				"password123",
+				UserRole.ADMIN);
+
+		mockMvc.perform(post("/api/users")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(admin))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{"email":"%s","password":"password123","fullName":"Dup","role":"STUDENT"}
+								""".formatted(email)))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.message").value("Email already registered: " + email));
+	}
+
+	@Test
+	void duplicateEmail_persistenceConflict_mapsTo409() {
+		String email = "db-dup-" + UUID.randomUUID() + "@example.com";
+		seedUser(email, "password123", UserRole.STUDENT);
+
+		User clash = new User();
+		clash.setId(UUID.randomUUID());
+		clash.setEmail(email);
+		clash.setPasswordHash(passwordEncoder.encode("password123"));
+		clash.setFullName("Clash");
+		clash.setRole(UserRole.STUDENT);
+		clash.setActive(true);
+
+		DataIntegrityViolationException thrown = null;
+		try {
+			userRepository.saveAndFlush(clash);
+		}
+		catch (DataIntegrityViolationException ex) {
+			thrown = ex;
+		}
+		assertThat(thrown).isNotNull();
+		assertThat(GlobalExceptionHandler.isUsersEmailUniqueViolation(thrown)).isTrue();
+
+		HttpServletRequest request = org.mockito.Mockito.mock(HttpServletRequest.class);
+		org.mockito.Mockito.when(request.getRequestURI()).thenReturn("/api/users");
+		ResponseEntity<ErrorResponse> response =
+				new GlobalExceptionHandler().handleDataIntegrity(thrown, request);
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().message()).isEqualTo("Email already registered");
+
+		entityManager.clear();
+	}
+
+	@Test
+	void profileUpdate_bumpsUpdatedAt() throws Exception {
+		User student = seedUser(
+				"ts-" + UUID.randomUUID() + "@example.com",
+				"password123",
+				UserRole.STUDENT);
+		OffsetDateTime updatedBefore = student.getUpdatedAt();
+
+		Thread.sleep(15L);
+
+		mockMvc.perform(put("/api/users/" + student.getId())
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(student))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"fullName\":\"Timestamped\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.fullName").value("Timestamped"));
+
+		entityManager.clear();
+		User reloaded = userRepository.findById(student.getId()).orElseThrow();
+		assertThat(reloaded.getUpdatedAt()).isAfter(updatedBefore);
 	}
 
 	@Test

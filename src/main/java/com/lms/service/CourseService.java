@@ -4,6 +4,9 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +26,7 @@ import com.lms.repository.CourseRepository;
 public class CourseService {
 
 	private static final BigDecimal FREE_PRICE = BigDecimal.ZERO;
+	private static final String ROLE_ADMIN = "ROLE_ADMIN";
 
 	private final CourseRepository courseRepository;
 	private final CourseMapper courseMapper;
@@ -55,22 +59,36 @@ public class CourseService {
 		return courseMapper.toResponse(courseRepository.save(course));
 	}
 
+	/**
+	 * Returns a course. Unpublished courses are visible to ADMIN only;
+	 * other callers receive 404 (no existence leak).
+	 */
 	public CourseResponse getById(UUID id) {
-		return courseMapper.toResponse(requireCourse(id));
+		Course course = requireCourse(id);
+		assertCanView(course);
+		return courseMapper.toResponse(course);
 	}
 
+	/**
+	 * Lists courses. Non-admin callers always see published courses only,
+	 * regardless of the {@code published} query parameter.
+	 */
 	public List<CourseResponse> list(Boolean published, UUID instructorId) {
+		boolean admin = currentUserIsAdmin();
+		Boolean effectivePublished = admin ? published : Boolean.TRUE;
+
 		List<Course> courses;
 		if (instructorId != null) {
 			courses = courseRepository.findByInstructorId(instructorId);
-			if (published != null) {
+			if (effectivePublished != null) {
+				boolean wantPublished = effectivePublished;
 				courses = courses.stream()
-						.filter(course -> course.isPublished() == published)
+						.filter(course -> course.isPublished() == wantPublished)
 						.toList();
 			}
 		}
-		else if (published != null) {
-			courses = courseRepository.findByPublished(published);
+		else if (effectivePublished != null) {
+			courses = courseRepository.findByPublished(effectivePublished);
 		}
 		else {
 			courses = courseRepository.findAll();
@@ -106,6 +124,13 @@ public class CourseService {
 		return courseMapper.toResponse(courseRepository.save(course));
 	}
 
+	@Transactional
+	public CourseResponse publish(UUID id) {
+		Course course = requireCourse(id);
+		course.setPublished(true);
+		return courseMapper.toResponse(courseRepository.save(course));
+	}
+
 	/**
 	 * Unpublishes a course. True archive is not supported by the schema
 	 * (no archived flag / soft-delete column).
@@ -120,6 +145,25 @@ public class CourseService {
 	private Course requireCourse(UUID id) {
 		return courseRepository.findById(id)
 				.orElseThrow(() -> new ResourceNotFoundException("Course not found: " + id));
+	}
+
+	private void assertCanView(Course course) {
+		if (!course.isPublished() && !currentUserIsAdmin()) {
+			throw new ResourceNotFoundException("Course not found: " + course.getId());
+		}
+	}
+
+	static boolean currentUserIsAdmin() {
+		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+		if (authentication == null) {
+			return false;
+		}
+		for (GrantedAuthority authority : authentication.getAuthorities()) {
+			if (ROLE_ADMIN.equals(authority.getAuthority())) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private static void validateInstructorRole(User instructor) {

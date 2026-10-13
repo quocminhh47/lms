@@ -12,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -59,7 +60,7 @@ public class Course {
 	private OffsetDateTime createdAt;
 
 	@Setter(AccessLevel.NONE)
-	@Column(name = "updated_at", nullable = false, updatable = false)
+	@Column(name = "updated_at", nullable = false)
 	private OffsetDateTime updatedAt;
 
 	@PrePersist
@@ -71,5 +72,10 @@ public class Course {
 		if (updatedAt == null) {
 			updatedAt = now;
 		}
+	}
+
+	@PreUpdate
+	void onUpdate() {
+		updatedAt = OffsetDateTime.now();
 	}
 }
