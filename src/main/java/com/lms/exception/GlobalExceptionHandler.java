@@ -6,6 +6,7 @@ import java.util.List;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -17,6 +18,7 @@ import jakarta.servlet.http.HttpServletRequest;
 public class GlobalExceptionHandler {
 
 	private static final String USERS_EMAIL_UNIQUE_CONSTRAINT = "uq_users_email";
+	private static final String ENROLLMENTS_USER_COURSE_UNIQUE_CONSTRAINT = "uq_enrollments_user_course";
 
 	@ExceptionHandler(ResourceNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleNotFound(
@@ -51,6 +53,15 @@ public class GlobalExceptionHandler {
 		return build(HttpStatus.UNAUTHORIZED, ex.getMessage(), request.getRequestURI(), null);
 	}
 
+	@ExceptionHandler(AccessDeniedException.class)
+	public ResponseEntity<ErrorResponse> handleAccessDenied(
+			AccessDeniedException ex, HttpServletRequest request) {
+		String message = ex.getMessage() == null || ex.getMessage().isBlank()
+				? "Access denied"
+				: ex.getMessage();
+		return build(HttpStatus.FORBIDDEN, message, request.getRequestURI(), null);
+	}
+
 	@ExceptionHandler(IllegalArgumentException.class)
 	public ResponseEntity<ErrorResponse> handleIllegalArgument(
 			IllegalArgumentException ex, HttpServletRequest request) {
@@ -58,8 +69,8 @@ public class GlobalExceptionHandler {
 	}
 
 	/**
-	 * Maps only the users.email uniqueness constraint to 409. Other integrity
-	 * violations stay as opaque 500 responses (no SQL details).
+	 * Maps known uniqueness constraints to 409. Other integrity violations stay
+	 * as opaque 500 responses (no SQL details).
 	 */
 	@ExceptionHandler(DataIntegrityViolationException.class)
 	public ResponseEntity<ErrorResponse> handleDataIntegrity(
@@ -68,6 +79,13 @@ public class GlobalExceptionHandler {
 			return build(
 					HttpStatus.CONFLICT,
 					"Email already registered",
+					request.getRequestURI(),
+					null);
+		}
+		if (isEnrollmentUserCourseUniqueViolation(ex)) {
+			return build(
+					HttpStatus.CONFLICT,
+					"Already enrolled in this course",
 					request.getRequestURI(),
 					null);
 		}
@@ -81,6 +99,11 @@ public class GlobalExceptionHandler {
 	public static boolean isUsersEmailUniqueViolation(DataIntegrityViolationException ex) {
 		String text = exceptionText(ex).toLowerCase();
 		return text.contains(USERS_EMAIL_UNIQUE_CONSTRAINT);
+	}
+
+	public static boolean isEnrollmentUserCourseUniqueViolation(DataIntegrityViolationException ex) {
+		String text = exceptionText(ex).toLowerCase();
+		return text.contains(ENROLLMENTS_USER_COURSE_UNIQUE_CONSTRAINT);
 	}
 
 	private static String exceptionText(Throwable ex) {

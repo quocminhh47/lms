@@ -45,12 +45,16 @@ Status legend used below:
 
 - Section and lesson management authorization (implemented): only `ADMIN`
   may create or update sections and lessons (including `sort_order`).
-  Public callers may read sections/lessons only when the parent course is
-  published; unpublished course content returns 404 for non-admins, including
-  direct `GET /api/lessons/{id}`. Nested routes verify Course → Section →
-  Lesson membership. Hard deletion of sections/lessons is **not** exposed:
-  `lessons`, `lesson_progress`, and `quizzes` reference them without
-  `ON DELETE CASCADE`, and no safe delete policy is confirmed.
+  **Curriculum metadata** (section list/detail; lesson list summaries without
+  `contentUrl`) is readable for **published** courses without enrollment.
+  **Lesson content** (`contentUrl` / playback or article payload via nested or
+  direct lesson get) requires an authenticated user with enrollment status
+  `ACTIVE` or `COMPLETED` in that course, or `ADMIN`. Guests receive 401;
+  authenticated users without qualifying enrollment receive 403. Unpublished
+  parent courses still return 404 for non-admins. Nested routes verify
+  Course → Section → Lesson membership. Hard deletion of sections/lessons is
+  **not** exposed: `lessons`, `lesson_progress`, and `quizzes` reference them
+  without `ON DELETE CASCADE`, and no safe delete policy is confirmed.
 
 ### Unresolved
 
@@ -105,25 +109,39 @@ Status legend used below:
 ### Confirmed
 
 - A user may have **at most one enrollment per course**
-  (`UNIQUE (user_id, course_id)`).
+  (`UNIQUE (user_id, course_id)`). Duplicate enroll attempts return HTTP 409.
 - Enrollment statuses: `PENDING`, `ACTIVE`, `COMPLETED`, `DROPPED`
   (`EnrollmentStatus`).
-- Enrollment must control course access.
+- MVP free-course enroll (`POST /api/courses/{courseId}/enrollments`) creates
+  the row as **`ACTIVE`** immediately. The column default `PENDING` remains for
+  future paid/pending flows and must not be relied on for this MVP path.
+- Only **published** courses may be enrolled. Missing or unpublished courses
+  return HTTP 404 (same non-leak convention as course get-by-id for non-admins).
+- Only **free** courses (`price = 0`) may be enrolled in the MVP. Persisted paid
+  rows (including seed/demo data) are rejected with HTTP 400
+  (`BusinessRuleException`).
+- The enrolling user is always the authenticated principal. Clients cannot
+  supply another `userId`. Current-user reads are
+  `GET /api/enrollments/me` and `GET /api/enrollments/me/{enrollmentId}`.
+- Enrollment controls access to **lesson learning content** (`contentUrl`).
+  Qualifying statuses: `ACTIVE`, `COMPLETED`. `PENDING` and `DROPPED` do not
+  grant content access. Enrollment in another course does not grant access.
+- Public catalog and published course detail remain open. Section metadata and
+  lesson summaries (no `contentUrl`) remain public for published courses.
 - For future paid courses: payment must succeed before paid-course enrollment
   becomes `ACTIVE` (not implemented in MVP).
 
 ### Unresolved
 
-- Exact transition rules for MVP free courses (e.g. whether enrollment is
-  created directly as `ACTIVE`, or always starts as `PENDING`).
 - Who may drop an enrollment and whether `DROPPED` can re-enroll (unique
-  constraint implies update-in-place or block re-create).
+  constraint implies update-in-place or block re-create). MVP blocks a second
+  insert with 409 while any row for `(user, course)` exists.
 - When status moves to `COMPLETED` relative to certificate issuance.
 
 ### Schema / code mismatch
 
-- Status values are stored; access-gating and transition logic are not
-  implemented in services yet.
+- None for MVP learning-content gating of lesson get endpoints. Future quiz
+  attempt / progress APIs should reuse the same enrollment check.
 
 ---
 

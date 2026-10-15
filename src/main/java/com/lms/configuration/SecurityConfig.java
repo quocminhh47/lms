@@ -64,8 +64,9 @@ public class SecurityConfig {
 						.accessDeniedHandler(accessDeniedHandler))
 				.authorizeHttpRequests(auth -> auth
 						.requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
-						// Published catalog + nested section/lesson reads are public;
-						// services hide unpublished course content from non-admins.
+						// Catalog, section metadata, and lesson summaries are public for
+						// published courses. Full lesson content is gated in LessonService
+						// (enrollment ACTIVE/COMPLETED or ADMIN); unpublished → 404.
 						.requestMatchers(HttpMethod.GET, "/api/courses", "/api/courses/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/lessons/*").permitAll()
 						.requestMatchers("/error").permitAll()

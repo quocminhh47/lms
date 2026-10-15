@@ -60,4 +60,27 @@ class GlobalExceptionHandlerTest {
 		assertThat(GlobalExceptionHandler.isUsersEmailUniqueViolation(
 				new DataIntegrityViolationException("duplicate email on users"))).isFalse();
 	}
+
+	@Test
+	void dataIntegrity_enrollmentUserCourseUnique_returns409() {
+		when(request.getRequestURI()).thenReturn("/api/courses/x/enrollments");
+		DataIntegrityViolationException ex = new DataIntegrityViolationException(
+				"could not execute statement",
+				new SQLException("ERROR: duplicate key value violates unique constraint \"uq_enrollments_user_course\""));
+
+		ResponseEntity<ErrorResponse> response = handler.handleDataIntegrity(ex, request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().message()).isEqualTo("Already enrolled in this course");
+		assertThat(response.getBody().message()).doesNotContain("uq_enrollments_user_course");
+	}
+
+	@Test
+	void isEnrollmentUserCourseUniqueViolation_requiresConstraintName() {
+		assertThat(GlobalExceptionHandler.isEnrollmentUserCourseUniqueViolation(
+				new DataIntegrityViolationException("violation of uq_enrollments_user_course"))).isTrue();
+		assertThat(GlobalExceptionHandler.isEnrollmentUserCourseUniqueViolation(
+				new DataIntegrityViolationException("duplicate enrollment row"))).isFalse();
+	}
 }

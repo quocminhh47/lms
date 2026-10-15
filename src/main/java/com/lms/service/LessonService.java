@@ -22,14 +22,17 @@ public class LessonService {
 
 	private final LessonRepository lessonRepository;
 	private final SectionService sectionService;
+	private final EnrollmentService enrollmentService;
 	private final LessonMapper lessonMapper;
 
 	public LessonService(
 			LessonRepository lessonRepository,
 			SectionService sectionService,
+			EnrollmentService enrollmentService,
 			LessonMapper lessonMapper) {
 		this.lessonRepository = lessonRepository;
 		this.sectionService = sectionService;
+		this.enrollmentService = enrollmentService;
 		this.lessonMapper = lessonMapper;
 	}
 
@@ -50,27 +53,34 @@ public class LessonService {
 		return lessonMapper.toResponse(lessonRepository.save(lesson));
 	}
 
+	/**
+	 * Public curriculum list for a published course. Summaries omit
+	 * {@code contentUrl}; full content requires {@link #getById}.
+	 */
 	public List<LessonResponse> listBySection(UUID courseId, UUID sectionId) {
 		Section section = sectionService.requireSectionInCourse(sectionId, courseId);
 		assertCourseVisible(section.getCourse());
 		return lessonRepository.findBySectionIdOrderBySortOrderAsc(sectionId).stream()
-				.map(lessonMapper::toResponse)
+				.map(lessonMapper::toSummaryResponse)
 				.toList();
 	}
 
 	public LessonResponse getById(UUID courseId, UUID sectionId, UUID lessonId) {
 		Lesson lesson = requireLessonInSection(lessonId, sectionId, courseId);
 		assertCourseVisible(lesson.getSection().getCourse());
+		enrollmentService.assertCanAccessLearningContent(lesson.getSection().getCourse().getId());
 		return lessonMapper.toResponse(lesson);
 	}
 
 	/**
-	 * Direct lesson lookup. Enforces parent-course publish visibility.
+	 * Direct lesson lookup with full content. Enforces publish visibility and
+	 * enrollment-based learning access (ADMIN bypass).
 	 */
 	public LessonResponse getById(UUID lessonId) {
 		Lesson lesson = lessonRepository.findById(lessonId)
 				.orElseThrow(() -> new ResourceNotFoundException("Lesson not found: " + lessonId));
 		assertCourseVisible(lesson.getSection().getCourse());
+		enrollmentService.assertCanAccessLearningContent(lesson.getSection().getCourse().getId());
 		return lessonMapper.toResponse(lesson);
 	}
 

@@ -43,11 +43,18 @@ class LessonServiceTest {
 	@Mock
 	private SectionService sectionService;
 
+	@Mock
+	private EnrollmentService enrollmentService;
+
 	private LessonService lessonService;
 
 	@BeforeEach
 	void setUp() {
-		lessonService = new LessonService(lessonRepository, sectionService, new LessonMapper());
+		lessonService = new LessonService(
+				lessonRepository,
+				sectionService,
+				enrollmentService,
+				new LessonMapper());
 		SecurityContextHolder.clearContext();
 	}
 
@@ -88,10 +95,12 @@ class LessonServiceTest {
 
 		assertThatThrownBy(() -> lessonService.getById(lesson.getId()))
 				.isInstanceOf(ResourceNotFoundException.class);
+		verify(enrollmentService, org.mockito.Mockito.never())
+				.assertCanAccessLearningContent(org.mockito.ArgumentMatchers.any());
 	}
 
 	@Test
-	void getById_directLookup_allowsUnpublishedForAdmin() {
+	void getById_directLookup_allowsUnpublishedForAdmin_afterLearningAccessCheck() {
 		asAdmin();
 		Course course = course(false);
 		Section section = section(course);
@@ -100,8 +109,10 @@ class LessonServiceTest {
 
 		LessonResponse response = lessonService.getById(lesson.getId());
 
+		verify(enrollmentService).assertCanAccessLearningContent(course.getId());
 		assertThat(response.id()).isEqualTo(lesson.getId());
 		assertThat(response.courseId()).isEqualTo(course.getId());
+		assertThat(response.contentUrl()).isEqualTo("https://cdn/v");
 	}
 
 	@Test
@@ -175,6 +186,7 @@ class LessonServiceTest {
 		lesson.setTitle("Lesson");
 		lesson.setSection(section);
 		lesson.setLessonType(LessonType.VIDEO);
+		lesson.setContentUrl("https://cdn/v");
 		lesson.setSortOrder(0);
 		return lesson;
 	}

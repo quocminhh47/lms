@@ -22,9 +22,10 @@ import com.lms.service.LessonService;
 import jakarta.validation.Valid;
 
 /**
- * Lessons nested under course/section. Mutations are ADMIN-only. Reads follow
- * parent-course publish visibility. Hard deletion is omitted because
- * {@code lesson_progress} and {@code quizzes} reference lessons without CASCADE.
+ * Lessons nested under course/section. Mutations are ADMIN-only. List returns
+ * public summaries (no {@code contentUrl}). Get-by-id returns full content and
+ * requires ACTIVE/COMPLETED enrollment (ADMIN bypass). Hard deletion is omitted
+ * because {@code lesson_progress} and {@code quizzes} reference lessons without CASCADE.
  */
 @RestController
 @RequestMapping("/api/courses/{courseId}/sections/{sectionId}/lessons")

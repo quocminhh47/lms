@@ -11,8 +11,8 @@ import com.lms.dto.lesson.LessonResponse;
 import com.lms.service.LessonService;
 
 /**
- * Direct lesson lookup. Parent-course publish visibility is enforced in the
- * service (unpublished content returns 404 for non-admins).
+ * Direct lesson lookup with full content. Publish visibility and enrollment
+ * learning-access checks are enforced in the service.
  */
 @RestController
 @RequestMapping("/api/lessons")
