@@ -43,6 +43,9 @@ public class Course {
 	@Column(name = "price", nullable = false)
 	private BigDecimal price = BigDecimal.ZERO;
 
+	@Column(name = "thumbnail_url", length = 2048)
+	private String thumbnailUrl;
+
 	@Column(name = "is_published", nullable = false)
 	private boolean published = false;
 

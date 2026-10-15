@@ -47,6 +47,8 @@ public class UserService {
 		user.setFullName(request.fullName().trim());
 		user.setRole(request.role());
 		user.setAvatarUrl(blankToNull(request.avatarUrl()));
+		user.setPhone(blankToNull(request.phone()));
+		user.setDateOfBirth(request.dateOfBirth());
 		user.setActive(true);
 
 		return userMapper.toResponse(userRepository.save(user));
@@ -81,6 +83,12 @@ public class UserService {
 		}
 		if (request.avatarUrl() != null) {
 			user.setAvatarUrl(blankToNull(request.avatarUrl()));
+		}
+		if (request.phone() != null) {
+			user.setPhone(blankToNull(request.phone()));
+		}
+		if (request.dateOfBirth() != null) {
+			user.setDateOfBirth(request.dateOfBirth());
 		}
 		if (request.active() != null) {
 			user.setActive(request.active());

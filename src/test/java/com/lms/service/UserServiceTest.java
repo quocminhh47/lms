@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -55,7 +56,9 @@ class UserServiceTest {
 				"password123",
 				"Alex Instructor",
 				UserRole.INSTRUCTOR,
-				null);
+				null,
+				"+84 912 345 678",
+				LocalDate.of(1990, 5, 15));
 
 		when(userRepository.existsByEmail("alex@example.com")).thenReturn(false);
 		when(passwordEncoder.encode("password123")).thenReturn("hashed-secret");
@@ -72,6 +75,10 @@ class UserServiceTest {
 		assertThat(response.email()).isEqualTo("alex@example.com");
 		assertThat(response.fullName()).isEqualTo("Alex Instructor");
 		assertThat(response.role()).isEqualTo(UserRole.INSTRUCTOR);
+		assertThat(saved.getPhone()).isEqualTo("+84 912 345 678");
+		assertThat(saved.getDateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 15));
+		assertThat(response.phone()).isEqualTo("+84 912 345 678");
+		assertThat(response.dateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 15));
 	}
 
 	@Test
@@ -81,6 +88,8 @@ class UserServiceTest {
 				"password123",
 				"Dup User",
 				UserRole.STUDENT,
+				null,
+				null,
 				null);
 		when(userRepository.existsByEmail("dup@example.com")).thenReturn(true);
 
@@ -114,10 +123,39 @@ class UserServiceTest {
 
 		UserResponse response = userService.update(
 				id,
-				new UpdateUserRequest("New Name", "https://cdn/avatar.png", false));
+				new UpdateUserRequest(
+						"New Name",
+						"https://cdn/avatar.png",
+						"0901234567",
+						LocalDate.of(2000, 1, 1),
+						false));
 
 		assertThat(response.fullName()).isEqualTo("New Name");
 		assertThat(response.avatarUrl()).isEqualTo("https://cdn/avatar.png");
 		assertThat(response.active()).isFalse();
+		assertThat(response.phone()).isEqualTo("0901234567");
+		assertThat(response.dateOfBirth()).isEqualTo(LocalDate.of(2000, 1, 1));
+	}
+
+	@Test
+	void update_clearsBlankPhone() {
+		UUID id = UUID.randomUUID();
+		User user = new User();
+		user.setId(id);
+		user.setEmail("user@example.com");
+		user.setPasswordHash("hash");
+		user.setFullName("User");
+		user.setRole(UserRole.STUDENT);
+		user.setPhone("+1");
+		user.setActive(true);
+
+		when(userRepository.findById(id)).thenReturn(Optional.of(user));
+		when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+		UserResponse response = userService.update(
+				id,
+				new UpdateUserRequest(null, null, "  ", null, null));
+
+		assertThat(response.phone()).isNull();
 	}
 }

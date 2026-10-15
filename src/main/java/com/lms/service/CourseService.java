@@ -1,7 +1,9 @@
 package com.lms.service;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.security.core.Authentication;
@@ -20,6 +22,7 @@ import com.lms.exception.BusinessRuleException;
 import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.CourseMapper;
 import com.lms.repository.CourseRepository;
+import com.lms.repository.LessonRepository;
 
 @Service
 @Transactional(readOnly = true)
@@ -29,14 +32,17 @@ public class CourseService {
 	private static final String ROLE_ADMIN = "ROLE_ADMIN";
 
 	private final CourseRepository courseRepository;
+	private final LessonRepository lessonRepository;
 	private final CourseMapper courseMapper;
 	private final UserService userService;
 
 	public CourseService(
 			CourseRepository courseRepository,
+			LessonRepository lessonRepository,
 			CourseMapper courseMapper,
 			UserService userService) {
 		this.courseRepository = courseRepository;
+		this.lessonRepository = lessonRepository;
 		this.courseMapper = courseMapper;
 		this.userService = userService;
 	}
@@ -54,9 +60,11 @@ public class CourseService {
 		course.setDescription(normalizeDescription(request.description()));
 		course.setInstructor(instructor);
 		course.setPrice(FREE_PRICE);
+		course.setThumbnailUrl(blankToNull(request.thumbnailUrl()));
 		course.setPublished(Boolean.TRUE.equals(request.published()));
 
-		return courseMapper.toResponse(courseRepository.save(course));
+		Course saved = courseRepository.save(course);
+		return courseMapper.toResponse(saved, 0L);
 	}
 
 	/**
@@ -66,7 +74,8 @@ public class CourseService {
 	public CourseResponse getById(UUID id) {
 		Course course = requireCourse(id);
 		assertCanView(course);
-		return courseMapper.toResponse(course);
+		long lessonCount = lessonRepository.countBySection_Course_Id(id);
+		return courseMapper.toResponse(course, lessonCount);
 	}
 
 	/**
@@ -94,9 +103,7 @@ public class CourseService {
 			courses = courseRepository.findAll();
 		}
 
-		return courses.stream()
-				.map(courseMapper::toResponse)
-				.toList();
+		return toResponses(courses);
 	}
 
 	@Transactional
@@ -120,15 +127,20 @@ public class CourseService {
 		if (request.published() != null) {
 			course.setPublished(request.published());
 		}
+		if (request.thumbnailUrl() != null) {
+			course.setThumbnailUrl(blankToNull(request.thumbnailUrl()));
+		}
 
-		return courseMapper.toResponse(courseRepository.save(course));
+		Course saved = courseRepository.save(course);
+		long lessonCount = lessonRepository.countBySection_Course_Id(saved.getId());
+		return courseMapper.toResponse(saved, lessonCount);
 	}
 
 	@Transactional
 	public CourseResponse publish(UUID id) {
 		Course course = requireCourse(id);
 		course.setPublished(true);
-		return courseMapper.toResponse(courseRepository.save(course));
+		return toResponseWithLessonCount(courseRepository.save(course));
 	}
 
 	/**
@@ -139,7 +151,36 @@ public class CourseService {
 	public CourseResponse unpublish(UUID id) {
 		Course course = requireCourse(id);
 		course.setPublished(false);
-		return courseMapper.toResponse(courseRepository.save(course));
+		return toResponseWithLessonCount(courseRepository.save(course));
+	}
+
+	private List<CourseResponse> toResponses(List<Course> courses) {
+		if (courses.isEmpty()) {
+			return List.of();
+		}
+		Map<UUID, Long> lessonCounts = loadLessonCounts(
+				courses.stream().map(Course::getId).toList());
+		return courses.stream()
+				.map(course -> courseMapper.toResponse(
+						course,
+						lessonCounts.getOrDefault(course.getId(), 0L)))
+				.toList();
+	}
+
+	private CourseResponse toResponseWithLessonCount(Course course) {
+		long lessonCount = lessonRepository.countBySection_Course_Id(course.getId());
+		return courseMapper.toResponse(course, lessonCount);
+	}
+
+	private Map<UUID, Long> loadLessonCounts(List<UUID> courseIds) {
+		if (courseIds.isEmpty()) {
+			return Map.of();
+		}
+		Map<UUID, Long> counts = new HashMap<>();
+		for (Object[] row : lessonRepository.countLessonsGroupedByCourseId(courseIds)) {
+			counts.put((UUID) row[0], ((Number) row[1]).longValue());
+		}
+		return counts;
 	}
 
 	private Course requireCourse(UUID id) {
@@ -194,6 +235,14 @@ public class CourseService {
 			return null;
 		}
 		String trimmed = description.trim();
+		return trimmed.isEmpty() ? null : trimmed;
+	}
+
+	private static String blankToNull(String value) {
+		if (value == null) {
+			return null;
+		}
+		String trimmed = value.trim();
 		return trimmed.isEmpty() ? null : trimmed;
 	}
 }
