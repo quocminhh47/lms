@@ -3,6 +3,7 @@ package com.lms.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -32,6 +33,7 @@ import com.lms.exception.BusinessRuleException;
 import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.CourseMapper;
 import com.lms.repository.CourseRepository;
+import com.lms.repository.LessonRepository;
 
 @ExtendWith(MockitoExtension.class)
 class CourseServiceTest {
@@ -42,11 +44,18 @@ class CourseServiceTest {
 	@Mock
 	private UserService userService;
 
+	@Mock
+	private LessonRepository lessonRepository;
+
 	private CourseService courseService;
 
 	@BeforeEach
 	void setUp() {
-		courseService = new CourseService(courseRepository, new CourseMapper(), userService);
+		courseService = new CourseService(
+				courseRepository,
+				lessonRepository,
+				new CourseMapper(),
+				userService);
 		SecurityContextHolder.clearContext();
 	}
 
@@ -63,6 +72,7 @@ class CourseServiceTest {
 				"desc",
 				instructorId,
 				new BigDecimal("9.99"),
+				null,
 				false);
 
 		assertThatThrownBy(() -> courseService.create(request))
@@ -77,6 +87,7 @@ class CourseServiceTest {
 				null,
 				UUID.randomUUID(),
 				new BigDecimal("-1"),
+				null,
 				false);
 
 		assertThatThrownBy(() -> courseService.create(request))
@@ -95,6 +106,7 @@ class CourseServiceTest {
 				null,
 				instructorId,
 				BigDecimal.ZERO,
+				null,
 				false);
 
 		assertThatThrownBy(() -> courseService.create(request))
@@ -114,6 +126,7 @@ class CourseServiceTest {
 				"  Overview  ",
 				instructorId,
 				BigDecimal.ZERO,
+				" https://cdn/thumb.png ",
 				true));
 
 		ArgumentCaptor<Course> captor = ArgumentCaptor.forClass(Course.class);
@@ -124,7 +137,10 @@ class CourseServiceTest {
 		assertThat(saved.getDescription()).isEqualTo("Overview");
 		assertThat(saved.getPrice()).isEqualByComparingTo(BigDecimal.ZERO);
 		assertThat(saved.isPublished()).isTrue();
+		assertThat(saved.getThumbnailUrl()).isEqualTo("https://cdn/thumb.png");
 		assertThat(response.instructorId()).isEqualTo(instructorId);
+		assertThat(response.thumbnailUrl()).isEqualTo("https://cdn/thumb.png");
+		assertThat(response.lessonCount()).isZero();
 		assertThat(response.finalQuizId()).isNull();
 	}
 
@@ -151,17 +167,21 @@ class CourseServiceTest {
 		asAdmin();
 		Course course = sampleCourse(false);
 		when(courseRepository.findById(course.getId())).thenReturn(Optional.of(course));
+		when(lessonRepository.countBySection_Course_Id(course.getId())).thenReturn(3L);
 
 		CourseResponse response = courseService.getById(course.getId());
 
 		assertThat(response.published()).isFalse();
 		assertThat(response.title()).isEqualTo("Course");
+		assertThat(response.instructorName()).isEqualTo("Instructor");
+		assertThat(response.lessonCount()).isEqualTo(3L);
 	}
 
 	@Test
 	void list_forcesPublishedOnlyForNonAdmin() {
 		Course published = sampleCourse(true);
 		when(courseRepository.findByPublished(true)).thenReturn(List.of(published));
+		when(lessonRepository.countLessonsGroupedByCourseId(anyCollection())).thenReturn(List.of());
 
 		List<CourseResponse> responses = courseService.list(false, null);
 
@@ -175,6 +195,7 @@ class CourseServiceTest {
 		asAdmin();
 		Course unpublished = sampleCourse(false);
 		when(courseRepository.findByPublished(false)).thenReturn(List.of(unpublished));
+		when(lessonRepository.countLessonsGroupedByCourseId(anyCollection())).thenReturn(List.of());
 
 		List<CourseResponse> responses = courseService.list(false, null);
 
@@ -195,6 +216,7 @@ class CourseServiceTest {
 
 		when(courseRepository.findById(id)).thenReturn(Optional.of(course));
 		when(courseRepository.save(any(Course.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(lessonRepository.countBySection_Course_Id(id)).thenReturn(0L);
 
 		CourseResponse response = courseService.unpublish(id);
 
@@ -206,6 +228,7 @@ class CourseServiceTest {
 		Course course = sampleCourse(false);
 		when(courseRepository.findById(course.getId())).thenReturn(Optional.of(course));
 		when(courseRepository.save(any(Course.class))).thenAnswer(invocation -> invocation.getArgument(0));
+		when(lessonRepository.countBySection_Course_Id(course.getId())).thenReturn(0L);
 
 		CourseResponse response = courseService.publish(course.getId());
 
@@ -227,7 +250,7 @@ class CourseServiceTest {
 
 		assertThatThrownBy(() -> courseService.update(
 				id,
-				new UpdateCourseRequest(null, null, new BigDecimal("1.00"), null)))
+				new UpdateCourseRequest(null, null, new BigDecimal("1.00"), null, null)))
 				.isInstanceOf(BusinessRuleException.class)
 				.hasMessageContaining("Only free courses");
 	}

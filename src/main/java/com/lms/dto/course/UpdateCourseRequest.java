@@ -9,5 +9,6 @@ public record UpdateCourseRequest(
 		@Size(max = 255) String title,
 		String description,
 		@DecimalMin(value = "0.0", inclusive = true) BigDecimal price,
+		@Size(max = 2048) String thumbnailUrl,
 		Boolean published) {
 }

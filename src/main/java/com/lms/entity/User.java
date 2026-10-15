@@ -1,5 +1,6 @@
 package com.lms.entity;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -45,6 +46,12 @@ public class User {
 
 	@Column(name = "avatar_url")
 	private String avatarUrl;
+
+	@Column(name = "phone", length = 32)
+	private String phone;
+
+	@Column(name = "date_of_birth")
+	private LocalDate dateOfBirth;
 
 	@Column(name = "is_active", nullable = false)
 	private boolean active = true;

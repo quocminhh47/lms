@@ -13,5 +13,6 @@ public record CreateCourseRequest(
 		String description,
 		@NotNull UUID instructorId,
 		@NotNull @DecimalMin(value = "0.0", inclusive = true) BigDecimal price,
+		@Size(max = 2048) String thumbnailUrl,
 		Boolean published) {
 }

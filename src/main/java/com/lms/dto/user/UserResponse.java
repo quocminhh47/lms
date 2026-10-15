@@ -1,5 +1,6 @@
 package com.lms.dto.user;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -11,6 +12,8 @@ public record UserResponse(
 		String fullName,
 		UserRole role,
 		String avatarUrl,
+		String phone,
+		LocalDate dateOfBirth,
 		boolean active,
 		OffsetDateTime createdAt,
 		OffsetDateTime updatedAt) {
