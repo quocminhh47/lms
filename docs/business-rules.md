@@ -140,8 +140,8 @@ Status legend used below:
 
 ### Schema / code mismatch
 
-- None for MVP learning-content gating of lesson get endpoints. Future quiz
-  attempt / progress APIs should reuse the same enrollment check.
+- None for MVP learning-content gating; lesson progress APIs reuse the same
+  enrollment check as lesson content (`assertCanAccessLearningContent`).
 
 ---
 
@@ -255,6 +255,24 @@ Status legend used below:
 
 - Per-user lesson progress is tracked in `lesson_progress`
   (`is_completed`, `watched_duration_seconds`, `last_accessed_at`).
+- **MVP lesson progress APIs** (learner = authenticated principal; enrollment
+  `ACTIVE` or `COMPLETED` required, same as lesson content; ADMIN bypasses
+  enrollment; unpublished courses → 404 for non-admins):
+  - `GET /api/courses/{courseId}/progress` — progress rows for that course.
+  - `GET /api/courses/{courseId}/lessons/{lessonId}/progress` — one lesson;
+    if no row exists, returns `isCompleted: false`, `watchedDurationSeconds: 0`,
+    `lastAccessedAt: null` without persisting.
+  - `PUT /api/courses/{courseId}/lessons/{lessonId}/progress` — upsert
+    `watchedDurationSeconds` (≥ 0). Does **not** auto-complete. Does **not**
+    clear `isCompleted` on position updates.
+  - `POST /api/courses/{courseId}/lessons/{lessonId}/progress/complete` —
+    marks **VIDEO** and **ARTICLE** lessons complete (idempotent). **QUIZ** and
+    **ASSIGNMENT** are rejected with HTTP 400 (`BusinessRuleException`).
+- Lesson must belong to the `courseId` in the path; wrong course → 404.
+- Concurrent first-time progress rows rely on `uq_lesson_progress_user_lesson`;
+  service retries after unique violations (409 if unrecoverable).
+- Progress APIs do **not** update `enrollments.status` to `COMPLETED` or issue
+  certificates.
 - Section-level quiz completion/unlocking requires **100%** on that quiz
   (see §4).
 - Course completion requires required learning content completed **and**
@@ -264,17 +282,16 @@ Status legend used below:
 ### Unresolved
 
 - Exact unlock graph (which content is locked until which quiz is passed).
-- How VIDEO/ARTICLE completion is decided (watch threshold, manual mark,
-  open-once, etc.).
+- Automatic VIDEO completion thresholds (watch percentage, etc.) — MVP uses
+  explicit complete for VIDEO/ARTICLE only.
 - How QUIZ lesson `lesson_progress.is_completed` relates to best quiz score
-  / `is_passed` (must be defined in services without inventing contradictory
-  rules).
+  / `is_passed` when quiz submission is implemented.
 - Mapping from course completion to `enrollments.status = COMPLETED`.
 
 ### Schema / code mismatch
 
-- Progress and enrollment status fields exist; completion orchestration is
-  not implemented.
+- Course-level completion orchestration (required content + Final Assessment)
+  is not implemented beyond per-lesson progress rows.
 
 ---
 

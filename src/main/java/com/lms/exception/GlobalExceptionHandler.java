@@ -19,6 +19,7 @@ public class GlobalExceptionHandler {
 
 	private static final String USERS_EMAIL_UNIQUE_CONSTRAINT = "uq_users_email";
 	private static final String ENROLLMENTS_USER_COURSE_UNIQUE_CONSTRAINT = "uq_enrollments_user_course";
+	private static final String LESSON_PROGRESS_USER_LESSON_UNIQUE_CONSTRAINT = "uq_lesson_progress_user_lesson";
 
 	@ExceptionHandler(ResourceNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleNotFound(
@@ -89,6 +90,13 @@ public class GlobalExceptionHandler {
 					request.getRequestURI(),
 					null);
 		}
+		if (isLessonProgressUserLessonUniqueViolation(ex)) {
+			return build(
+					HttpStatus.CONFLICT,
+					"Progress already exists for this lesson",
+					request.getRequestURI(),
+					null);
+		}
 		return build(
 				HttpStatus.INTERNAL_SERVER_ERROR,
 				"A database constraint was violated",
@@ -104,6 +112,16 @@ public class GlobalExceptionHandler {
 	public static boolean isEnrollmentUserCourseUniqueViolation(DataIntegrityViolationException ex) {
 		String text = exceptionText(ex).toLowerCase();
 		return text.contains(ENROLLMENTS_USER_COURSE_UNIQUE_CONSTRAINT);
+	}
+
+	public static boolean isLessonProgressUserLessonUniqueViolation(DataIntegrityViolationException ex) {
+		return isLessonProgressUserLessonUniqueViolation((Throwable) ex);
+	}
+
+	public static boolean isLessonProgressUserLessonUniqueViolation(Throwable ex) {
+		String text = exceptionText(ex).toLowerCase();
+		return text.contains(LESSON_PROGRESS_USER_LESSON_UNIQUE_CONSTRAINT)
+				|| (text.contains("lesson_progress") && text.contains("unique"));
 	}
 
 	private static String exceptionText(Throwable ex) {

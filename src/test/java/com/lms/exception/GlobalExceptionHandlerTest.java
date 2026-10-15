@@ -83,4 +83,36 @@ class GlobalExceptionHandlerTest {
 		assertThat(GlobalExceptionHandler.isEnrollmentUserCourseUniqueViolation(
 				new DataIntegrityViolationException("duplicate enrollment row"))).isFalse();
 	}
+
+	@Test
+	void dataIntegrity_lessonProgressUserLessonUnique_returns409() {
+		when(request.getRequestURI()).thenReturn("/api/courses/x/lessons/y/progress");
+		DataIntegrityViolationException ex = new DataIntegrityViolationException(
+				"could not execute statement",
+				new SQLException(
+						"ERROR: duplicate key value violates unique constraint \"uq_lesson_progress_user_lesson\""));
+
+		ResponseEntity<ErrorResponse> response = handler.handleDataIntegrity(ex, request);
+
+		assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+		assertThat(response.getBody()).isNotNull();
+		assertThat(response.getBody().message()).isEqualTo("Progress already exists for this lesson");
+	}
+
+	@Test
+	void isLessonProgressUserLessonUniqueViolation_requiresConstraintName() {
+		assertThat(GlobalExceptionHandler.isLessonProgressUserLessonUniqueViolation(
+				new DataIntegrityViolationException("violation of uq_lesson_progress_user_lesson"))).isTrue();
+		assertThat(GlobalExceptionHandler.isLessonProgressUserLessonUniqueViolation(
+				new DataIntegrityViolationException("duplicate progress row"))).isFalse();
+	}
+
+	@Test
+	void isLessonProgressUserLessonUniqueViolation_matchesH2MessageShape() {
+		DataIntegrityViolationException ex = new DataIntegrityViolationException(
+				"could not execute statement [Unique index or primary key violation: \"PUBLIC.UQ_LESSON_PROGRESS_USER_LESSON INDEX PUBLIC.UQ_LESSON_PROGRESS_USER_LESSON_INDEX_B ON PUBLIC.LESSON_PROGRESS(USER_ID NULLS FIRST, LESSON_ID NULLS FIRST) VALUES ( /* key:1 */ UUID 'a', UUID 'b')\"; SQL statement:\n"
+						+ "insert into lesson_progress (is_completed,last_accessed_at,lesson_id,user_id,watched_duration_seconds,id) values (?,?,?,?,?,?) [23505-240]]",
+				new SQLException("23505-240"));
+		assertThat(GlobalExceptionHandler.isLessonProgressUserLessonUniqueViolation(ex)).isTrue();
+	}
 }
