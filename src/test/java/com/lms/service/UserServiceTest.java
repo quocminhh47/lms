@@ -75,9 +75,9 @@ class UserServiceTest {
 		assertThat(response.email()).isEqualTo("alex@example.com");
 		assertThat(response.fullName()).isEqualTo("Alex Instructor");
 		assertThat(response.role()).isEqualTo(UserRole.INSTRUCTOR);
-		assertThat(saved.getPhone()).isEqualTo("+84 912 345 678");
+		assertThat(saved.getPhone()).isEqualTo("+84912345678");
 		assertThat(saved.getDateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 15));
-		assertThat(response.phone()).isEqualTo("+84 912 345 678");
+		assertThat(response.phone()).isEqualTo("+84912345678");
 		assertThat(response.dateOfBirth()).isEqualTo(LocalDate.of(1990, 5, 15));
 	}
 
@@ -125,6 +125,8 @@ class UserServiceTest {
 				id,
 				new UpdateUserRequest(
 						"New Name",
+						null,
+						null,
 						"https://cdn/avatar.png",
 						"0901234567",
 						LocalDate.of(2000, 1, 1),
@@ -154,7 +156,7 @@ class UserServiceTest {
 
 		UserResponse response = userService.update(
 				id,
-				new UpdateUserRequest(null, null, "  ", null, null));
+				new UpdateUserRequest(null, null, null, null, "  ", null, null));
 
 		assertThat(response.phone()).isNull();
 	}

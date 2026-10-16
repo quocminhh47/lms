@@ -10,6 +10,8 @@ public record UserResponse(
 		UUID id,
 		String email,
 		String fullName,
+		String firstName,
+		String lastName,
 		UserRole role,
 		String avatarUrl,
 		String phone,

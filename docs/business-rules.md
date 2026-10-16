@@ -26,6 +26,20 @@ Status legend used below:
   assign `INSTRUCTOR` or `ADMIN` via registration.
 - Authentication uses JWT bearer tokens (stateless). Passwords are stored
   only as BCrypt hashes.
+- Registration (implemented): requires `email`, `password` (8-100 chars),
+  `firstName`, `lastName` (each non-blank, max 100), `phoneNumber` (8-15
+  digits, optional leading `+`, separators allowed) and `dateOfBirth` (must be
+  in the past). `full_name` is kept and derived as `firstName + " " + lastName`.
+  Email and phone number are unique; phone is stored in canonical form
+  (`+` and digits only). Validation errors return `details: ["field: message"]`;
+  duplicates return 409 with the same detail format.
+- Login (implemented): `identifier` is an email (contains `@`) or a phone
+  number. The legacy `email` JSON property is accepted as an alias. Failures
+  (unknown identifier, wrong password, inactive account) all return the same
+  401 `Invalid credentials`.
+- Migration V4 backfills `first_name`/`last_name` from `full_name` (first token /
+  remainder, best-effort; legacy rows may keep NULL parts) and fails if existing
+  phone numbers collide after normalization.
 - **Only `ADMIN` may create courses** (authorization foundation). Course
   `instructor_id` may still reference an `INSTRUCTOR` (or `ADMIN`) user as
   the course owner; the create API itself is ADMIN-only.
@@ -45,12 +59,16 @@ Status legend used below:
 
 - Section and lesson management authorization (implemented): only `ADMIN`
   may create or update sections and lessons (including `sort_order`).
-  Public callers may read sections/lessons only when the parent course is
-  published; unpublished course content returns 404 for non-admins, including
-  direct `GET /api/lessons/{id}`. Nested routes verify Course → Section →
-  Lesson membership. Hard deletion of sections/lessons is **not** exposed:
-  `lessons`, `lesson_progress`, and `quizzes` reference them without
-  `ON DELETE CASCADE`, and no safe delete policy is confirmed.
+  **Curriculum metadata** (section list/detail; lesson list summaries without
+  `contentUrl`) is readable for **published** courses without enrollment.
+  **Lesson content** (`contentUrl` / playback or article payload via nested or
+  direct lesson get) requires an authenticated user with enrollment status
+  `ACTIVE` or `COMPLETED` in that course, or `ADMIN`. Guests receive 401;
+  authenticated users without qualifying enrollment receive 403. Unpublished
+  parent courses still return 404 for non-admins. Nested routes verify
+  Course → Section → Lesson membership. Hard deletion of sections/lessons is
+  **not** exposed: `lessons`, `lesson_progress`, and `quizzes` reference them
+  without `ON DELETE CASCADE`, and no safe delete policy is confirmed.
 
 ### Unresolved
 
@@ -75,6 +93,12 @@ Status legend used below:
 - A course contains ordered sections (`sections.sort_order`).
 - A section contains ordered lessons (`lessons.sort_order`).
 - Lesson types: `VIDEO`, `ARTICLE`, `QUIZ`, `ASSIGNMENT` (`LessonType`).
+- **`content_url`** stores external locations only (no file upload). The lesson
+  player (UI) supports **YouTube** watch/youtu.be/embed/shorts URLs (privacy-enhanced
+  embed), **direct HTTPS media** (e.g. MP4) for `VIDEO`, and **Google Drive file**
+  / **Google Docs document** preview URLs for `ARTICLE`, with an external link
+  fallback. Other hosts are link-only or direct video when the URL is clearly a
+  media file. Enrollment and ADMIN access rules for full `contentUrl` are unchanged.
 - MVP supports **free courses only** (`courses.price`; default `0`).
 - Paid courses and payment processing are **deferred** (future).
 - Full Assignment submission and grading are **not** part of the current MVP.
@@ -105,25 +129,39 @@ Status legend used below:
 ### Confirmed
 
 - A user may have **at most one enrollment per course**
-  (`UNIQUE (user_id, course_id)`).
+  (`UNIQUE (user_id, course_id)`). Duplicate enroll attempts return HTTP 409.
 - Enrollment statuses: `PENDING`, `ACTIVE`, `COMPLETED`, `DROPPED`
   (`EnrollmentStatus`).
-- Enrollment must control course access.
+- MVP free-course enroll (`POST /api/courses/{courseId}/enrollments`) creates
+  the row as **`ACTIVE`** immediately. The column default `PENDING` remains for
+  future paid/pending flows and must not be relied on for this MVP path.
+- Only **published** courses may be enrolled. Missing or unpublished courses
+  return HTTP 404 (same non-leak convention as course get-by-id for non-admins).
+- Only **free** courses (`price = 0`) may be enrolled in the MVP. Persisted paid
+  rows (including seed/demo data) are rejected with HTTP 400
+  (`BusinessRuleException`).
+- The enrolling user is always the authenticated principal. Clients cannot
+  supply another `userId`. Current-user reads are
+  `GET /api/enrollments/me` and `GET /api/enrollments/me/{enrollmentId}`.
+- Enrollment controls access to **lesson learning content** (`contentUrl`).
+  Qualifying statuses: `ACTIVE`, `COMPLETED`. `PENDING` and `DROPPED` do not
+  grant content access. Enrollment in another course does not grant access.
+- Public catalog and published course detail remain open. Section metadata and
+  lesson summaries (no `contentUrl`) remain public for published courses.
 - For future paid courses: payment must succeed before paid-course enrollment
   becomes `ACTIVE` (not implemented in MVP).
 
 ### Unresolved
 
-- Exact transition rules for MVP free courses (e.g. whether enrollment is
-  created directly as `ACTIVE`, or always starts as `PENDING`).
 - Who may drop an enrollment and whether `DROPPED` can re-enroll (unique
-  constraint implies update-in-place or block re-create).
+  constraint implies update-in-place or block re-create). MVP blocks a second
+  insert with 409 while any row for `(user, course)` exists.
 - When status moves to `COMPLETED` relative to certificate issuance.
 
 ### Schema / code mismatch
 
-- Status values are stored; access-gating and transition logic are not
-  implemented in services yet.
+- None for MVP learning-content gating; lesson progress APIs reuse the same
+  enrollment check as lesson content (`assertCanAccessLearningContent`).
 
 ---
 
@@ -237,6 +275,24 @@ Status legend used below:
 
 - Per-user lesson progress is tracked in `lesson_progress`
   (`is_completed`, `watched_duration_seconds`, `last_accessed_at`).
+- **MVP lesson progress APIs** (learner = authenticated principal; enrollment
+  `ACTIVE` or `COMPLETED` required, same as lesson content; ADMIN bypasses
+  enrollment; unpublished courses → 404 for non-admins):
+  - `GET /api/courses/{courseId}/progress` — progress rows for that course.
+  - `GET /api/courses/{courseId}/lessons/{lessonId}/progress` — one lesson;
+    if no row exists, returns `isCompleted: false`, `watchedDurationSeconds: 0`,
+    `lastAccessedAt: null` without persisting.
+  - `PUT /api/courses/{courseId}/lessons/{lessonId}/progress` — upsert
+    `watchedDurationSeconds` (≥ 0). Does **not** auto-complete. Does **not**
+    clear `isCompleted` on position updates.
+  - `POST /api/courses/{courseId}/lessons/{lessonId}/progress/complete` —
+    marks **VIDEO** and **ARTICLE** lessons complete (idempotent). **QUIZ** and
+    **ASSIGNMENT** are rejected with HTTP 400 (`BusinessRuleException`).
+- Lesson must belong to the `courseId` in the path; wrong course → 404.
+- Concurrent first-time progress rows rely on `uq_lesson_progress_user_lesson`;
+  service retries after unique violations (409 if unrecoverable).
+- Progress APIs do **not** update `enrollments.status` to `COMPLETED` or issue
+  certificates.
 - Section-level quiz completion/unlocking requires **100%** on that quiz
   (see §4).
 - Course completion requires required learning content completed **and**
@@ -246,17 +302,16 @@ Status legend used below:
 ### Unresolved
 
 - Exact unlock graph (which content is locked until which quiz is passed).
-- How VIDEO/ARTICLE completion is decided (watch threshold, manual mark,
-  open-once, etc.).
+- Automatic VIDEO completion thresholds (watch percentage, etc.) — MVP uses
+  explicit complete for VIDEO/ARTICLE only.
 - How QUIZ lesson `lesson_progress.is_completed` relates to best quiz score
-  / `is_passed` (must be defined in services without inventing contradictory
-  rules).
+  / `is_passed` when quiz submission is implemented.
 - Mapping from course completion to `enrollments.status = COMPLETED`.
 
 ### Schema / code mismatch
 
-- Progress and enrollment status fields exist; completion orchestration is
-  not implemented.
+- Course-level completion orchestration (required content + Final Assessment)
+  is not implemented beyond per-lesson progress rows.
 
 ---
 

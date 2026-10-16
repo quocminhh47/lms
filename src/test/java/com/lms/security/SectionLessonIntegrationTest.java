@@ -142,13 +142,17 @@ class SectionLessonIntegrationTest {
 				.andExpect(jsonPath("$[0].title").value("Pub Section"));
 
 		mockMvc.perform(get("/api/courses/" + published.getId() + "/sections/" + pubSection.getId()
-						+ "/lessons/" + pubLesson.getId()))
+						+ "/lessons"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.title").value("Pub Lesson"));
+				.andExpect(jsonPath("$[0].title").value("Pub Lesson"))
+				.andExpect(jsonPath("$[0].contentUrl").doesNotExist());
+
+		mockMvc.perform(get("/api/courses/" + published.getId() + "/sections/" + pubSection.getId()
+						+ "/lessons/" + pubLesson.getId()))
+				.andExpect(status().isUnauthorized());
 
 		mockMvc.perform(get("/api/lessons/" + pubLesson.getId()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.id").value(pubLesson.getId().toString()));
+				.andExpect(status().isUnauthorized());
 
 		mockMvc.perform(get("/api/courses/" + draft.getId() + "/sections"))
 				.andExpect(status().isNotFound());

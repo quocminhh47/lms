@@ -19,4 +19,20 @@ public class LessonMapper {
 				lesson.getDurationSeconds(),
 				lesson.getSortOrder());
 	}
+
+	/**
+	 * Public curriculum summary: same shape as {@link LessonResponse} but never
+	 * includes {@code contentUrl} (playback / article payload).
+	 */
+	public LessonResponse toSummaryResponse(Lesson lesson) {
+		return new LessonResponse(
+				lesson.getId(),
+				lesson.getSection().getId(),
+				lesson.getSection().getCourse().getId(),
+				lesson.getTitle(),
+				lesson.getLessonType(),
+				null,
+				lesson.getDurationSeconds(),
+				lesson.getSortOrder());
+	}
 }

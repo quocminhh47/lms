@@ -24,7 +24,7 @@ import lombok.Setter;
 				columnNames = { "user_id", "lesson_id" }))
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class LessonProgress {
 
 	@Id
