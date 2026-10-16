@@ -26,6 +26,20 @@ Status legend used below:
   assign `INSTRUCTOR` or `ADMIN` via registration.
 - Authentication uses JWT bearer tokens (stateless). Passwords are stored
   only as BCrypt hashes.
+- Registration (implemented): requires `email`, `password` (8-100 chars),
+  `firstName`, `lastName` (each non-blank, max 100), `phoneNumber` (8-15
+  digits, optional leading `+`, separators allowed) and `dateOfBirth` (must be
+  in the past). `full_name` is kept and derived as `firstName + " " + lastName`.
+  Email and phone number are unique; phone is stored in canonical form
+  (`+` and digits only). Validation errors return `details: ["field: message"]`;
+  duplicates return 409 with the same detail format.
+- Login (implemented): `identifier` is an email (contains `@`) or a phone
+  number. The legacy `email` JSON property is accepted as an alias. Failures
+  (unknown identifier, wrong password, inactive account) all return the same
+  401 `Invalid credentials`.
+- Migration V4 backfills `first_name`/`last_name` from `full_name` (first token /
+  remainder, best-effort; legacy rows may keep NULL parts) and fails if existing
+  phone numbers collide after normalization.
 - **Only `ADMIN` may create courses** (authorization foundation). Course
   `instructor_id` may still reference an `INSTRUCTOR` (or `ADMIN`) user as
   the course owner; the create API itself is ADMIN-only.
@@ -79,6 +93,12 @@ Status legend used below:
 - A course contains ordered sections (`sections.sort_order`).
 - A section contains ordered lessons (`lessons.sort_order`).
 - Lesson types: `VIDEO`, `ARTICLE`, `QUIZ`, `ASSIGNMENT` (`LessonType`).
+- **`content_url`** stores external locations only (no file upload). The lesson
+  player (UI) supports **YouTube** watch/youtu.be/embed/shorts URLs (privacy-enhanced
+  embed), **direct HTTPS media** (e.g. MP4) for `VIDEO`, and **Google Drive file**
+  / **Google Docs document** preview URLs for `ARTICLE`, with an external link
+  fallback. Other hosts are link-only or direct video when the URL is clearly a
+  media file. Enrollment and ADMIN access rules for full `contentUrl` are unchanged.
 - MVP supports **free courses only** (`courses.price`; default `0`).
 - Paid courses and payment processing are **deferred** (future).
 - Full Assignment submission and grading are **not** part of the current MVP.

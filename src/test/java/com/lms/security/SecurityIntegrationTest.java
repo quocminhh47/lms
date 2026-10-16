@@ -74,10 +74,13 @@ class SecurityIntegrationTest {
 				{
 				  "email": "%s",
 				  "password": "password123",
-				  "fullName": "Reg Student",
+				  "firstName": "Reg",
+				  "lastName": "Student",
+				  "phoneNumber": "+84 %s",
+				  "dateOfBirth": "2000-01-15",
 				  "role": "ADMIN"
 				}
-				""".formatted(email);
+				""".formatted(email, uniquePhoneDigits());
 
 		MvcResult result = mockMvc.perform(post("/api/auth/register")
 						.contentType(MediaType.APPLICATION_JSON)
@@ -89,6 +92,11 @@ class SecurityIntegrationTest {
 
 		User saved = userRepository.findByEmail(email).orElseThrow();
 		assertThat(saved.getRole()).isEqualTo(UserRole.STUDENT);
+		assertThat(saved.getFirstName()).isEqualTo("Reg");
+		assertThat(saved.getLastName()).isEqualTo("Student");
+		assertThat(saved.getFullName()).isEqualTo("Reg Student");
+		assertThat(saved.getPhone()).startsWith("+84");
+		assertThat(saved.getDateOfBirth()).isEqualTo(java.time.LocalDate.of(2000, 1, 15));
 		assertThat(passwordEncoder.matches("password123", saved.getPasswordHash())).isTrue();
 
 		JsonNode json = objectMapper.readTree(result.getResponse().getContentAsString());
@@ -312,10 +320,12 @@ class SecurityIntegrationTest {
 		mockMvc.perform(post("/api/auth/register")
 						.contentType(MediaType.APPLICATION_JSON)
 						.content("""
-								{"email":"%s","password":"password123","fullName":"Dup"}
-								""".formatted(email)))
+								{"email":"%s","password":"password123","firstName":"Dup","lastName":"User",
+								 "phoneNumber":"%s","dateOfBirth":"2000-01-15"}
+								""".formatted(email, uniquePhoneDigits())))
 				.andExpect(status().isConflict())
-				.andExpect(jsonPath("$.message").value("Email already registered"));
+				.andExpect(jsonPath("$.message").value("Email already registered"))
+				.andExpect(jsonPath("$.details[0]").value("email: Email already registered"));
 	}
 
 	@Test
@@ -404,7 +414,7 @@ class SecurityIntegrationTest {
 								{"email":"%s","password":"wrong-password"}
 								""".formatted(email)))
 				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.message").value("Invalid email or password"));
+				.andExpect(jsonPath("$.message").value("Invalid credentials"));
 	}
 
 	@Test
@@ -456,6 +466,11 @@ class SecurityIntegrationTest {
 
 	private String tokenFor(User user) {
 		return jwtService.createToken(user.getId(), user.getEmail(), user.getRole());
+	}
+
+	/** 10-digit unique-ish suffix for phone numbers (unique per call within a run). */
+	private static String uniquePhoneDigits() {
+		return String.valueOf(900_000_000L + (System.nanoTime() % 99_000_000L));
 	}
 
 	private User seedUser(String email, String rawPassword, UserRole role) {

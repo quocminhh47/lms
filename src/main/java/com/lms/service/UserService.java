@@ -15,6 +15,7 @@ import com.lms.exception.ConflictException;
 import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.UserMapper;
 import com.lms.repository.UserRepository;
+import com.lms.util.PhoneNumbers;
 
 @Service
 @Transactional(readOnly = true)
@@ -44,10 +45,10 @@ public class UserService {
 		user.setId(UUID.randomUUID());
 		user.setEmail(email);
 		user.setPasswordHash(passwordEncoder.encode(request.password()));
-		user.setFullName(request.fullName().trim());
+		applyFullName(user, request.fullName().trim());
 		user.setRole(request.role());
 		user.setAvatarUrl(blankToNull(request.avatarUrl()));
-		user.setPhone(blankToNull(request.phone()));
+		user.setPhone(resolvePhone(request.phone(), null));
 		user.setDateOfBirth(request.dateOfBirth());
 		user.setActive(true);
 
@@ -74,18 +75,24 @@ public class UserService {
 	public UserResponse update(UUID id, UpdateUserRequest request) {
 		User user = requireUser(id);
 
-		if (request.fullName() != null) {
-			String fullName = request.fullName().trim();
-			if (fullName.isEmpty()) {
-				throw new IllegalArgumentException("fullName must not be blank");
-			}
-			user.setFullName(fullName);
+		if (request.firstName() != null || request.lastName() != null) {
+			String firstName = request.firstName() != null
+					? requireNotBlank(request.firstName(), "firstName")
+					: user.getFirstName();
+			String lastName = request.lastName() != null
+					? requireNotBlank(request.lastName(), "lastName")
+					: user.getLastName();
+			user.setFirstName(firstName);
+			user.setLastName(lastName);
+			user.setFullName(joinName(firstName, lastName));
+		} else if (request.fullName() != null) {
+			applyFullName(user, requireNotBlank(request.fullName(), "fullName"));
 		}
 		if (request.avatarUrl() != null) {
 			user.setAvatarUrl(blankToNull(request.avatarUrl()));
 		}
 		if (request.phone() != null) {
-			user.setPhone(blankToNull(request.phone()));
+			user.setPhone(resolvePhone(request.phone(), user.getId()));
 		}
 		if (request.dateOfBirth() != null) {
 			user.setDateOfBirth(request.dateOfBirth());
@@ -100,6 +107,63 @@ public class UserService {
 	public User requireUser(UUID id) {
 		return userRepository.findById(id)
 				.orElseThrow(() -> new ResourceNotFoundException("User not found: " + id));
+	}
+
+	/** Normalizes a phone number, validates its digit count and enforces uniqueness. */
+	private String resolvePhone(String raw, UUID currentUserId) {
+		String phone = PhoneNumbers.normalize(raw);
+		if (phone == null) {
+			return null;
+		}
+		if (!PhoneNumbers.isValid(phone)) {
+			throw new IllegalArgumentException("phone must be a valid phone number (8-15 digits)");
+		}
+		boolean taken = userRepository.findByPhone(phone)
+				.map(other -> !other.getId().equals(currentUserId))
+				.orElse(false);
+		if (taken) {
+			throw new ConflictException("Phone number already registered", "phone");
+		}
+		return phone;
+	}
+
+	/**
+	 * Sets the display name and a best-effort first/last split (first token / remainder).
+	 * Name order differs between cultures, so callers that know the parts should set them directly.
+	 */
+	private static void applyFullName(User user, String fullName) {
+		user.setFullName(fullName);
+		int space = fullName.indexOf(' ');
+		if (space < 0) {
+			user.setFirstName(truncate(fullName));
+			user.setLastName(null);
+		} else {
+			user.setFirstName(truncate(fullName.substring(0, space)));
+			String rest = fullName.substring(space + 1).trim();
+			user.setLastName(rest.isEmpty() ? null : truncate(rest));
+		}
+	}
+
+	private static String joinName(String firstName, String lastName) {
+		if (firstName == null || firstName.isBlank()) {
+			return lastName;
+		}
+		if (lastName == null || lastName.isBlank()) {
+			return firstName;
+		}
+		return firstName + " " + lastName;
+	}
+
+	private static String requireNotBlank(String value, String field) {
+		String trimmed = value.trim();
+		if (trimmed.isEmpty()) {
+			throw new IllegalArgumentException(field + " must not be blank");
+		}
+		return trimmed;
+	}
+
+	private static String truncate(String value) {
+		return value.length() <= 100 ? value : value.substring(0, 100);
 	}
 
 	private static String normalizeEmail(String email) {

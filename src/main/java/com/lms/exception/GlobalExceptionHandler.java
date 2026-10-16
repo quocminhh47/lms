@@ -18,6 +18,7 @@ import jakarta.servlet.http.HttpServletRequest;
 public class GlobalExceptionHandler {
 
 	private static final String USERS_EMAIL_UNIQUE_CONSTRAINT = "uq_users_email";
+	private static final String USERS_PHONE_UNIQUE_CONSTRAINT = "uq_users_phone";
 	private static final String ENROLLMENTS_USER_COURSE_UNIQUE_CONSTRAINT = "uq_enrollments_user_course";
 	private static final String LESSON_PROGRESS_USER_LESSON_UNIQUE_CONSTRAINT = "uq_lesson_progress_user_lesson";
 
@@ -30,7 +31,10 @@ public class GlobalExceptionHandler {
 	@ExceptionHandler(ConflictException.class)
 	public ResponseEntity<ErrorResponse> handleConflict(
 			ConflictException ex, HttpServletRequest request) {
-		return build(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI(), null);
+		List<String> details = ex.getField() == null
+				? null
+				: List.of(ex.getField() + ": " + ex.getMessage());
+		return build(HttpStatus.CONFLICT, ex.getMessage(), request.getRequestURI(), details);
 	}
 
 	@ExceptionHandler(BusinessRuleException.class)
@@ -81,7 +85,14 @@ public class GlobalExceptionHandler {
 					HttpStatus.CONFLICT,
 					"Email already registered",
 					request.getRequestURI(),
-					null);
+					List.of("email: Email already registered"));
+		}
+		if (isUsersPhoneUniqueViolation(ex)) {
+			return build(
+					HttpStatus.CONFLICT,
+					"Phone number already registered",
+					request.getRequestURI(),
+					List.of("phoneNumber: Phone number already registered"));
 		}
 		if (isEnrollmentUserCourseUniqueViolation(ex)) {
 			return build(
@@ -107,6 +118,11 @@ public class GlobalExceptionHandler {
 	public static boolean isUsersEmailUniqueViolation(DataIntegrityViolationException ex) {
 		String text = exceptionText(ex).toLowerCase();
 		return text.contains(USERS_EMAIL_UNIQUE_CONSTRAINT);
+	}
+
+	public static boolean isUsersPhoneUniqueViolation(DataIntegrityViolationException ex) {
+		String text = exceptionText(ex).toLowerCase();
+		return text.contains(USERS_PHONE_UNIQUE_CONSTRAINT);
 	}
 
 	public static boolean isEnrollmentUserCourseUniqueViolation(DataIntegrityViolationException ex) {

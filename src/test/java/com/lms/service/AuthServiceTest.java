@@ -56,7 +56,10 @@ class AuthServiceTest {
 		AuthResponse response = authService.register(new RegisterRequest(
 				"New@Example.com",
 				"password123",
-				"New Student",
+				"New",
+				"Student",
+				"+84 912 345 678",
+				java.time.LocalDate.of(2000, 1, 15),
 				null));
 
 		ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
@@ -65,6 +68,11 @@ class AuthServiceTest {
 
 		assertThat(saved.getRole()).isEqualTo(UserRole.STUDENT);
 		assertThat(saved.getEmail()).isEqualTo("new@example.com");
+		assertThat(saved.getFirstName()).isEqualTo("New");
+		assertThat(saved.getLastName()).isEqualTo("Student");
+		assertThat(saved.getFullName()).isEqualTo("New Student");
+		assertThat(saved.getPhone()).isEqualTo("+84912345678");
+		assertThat(saved.getDateOfBirth()).isEqualTo(java.time.LocalDate.of(2000, 1, 15));
 		assertThat(saved.getPasswordHash()).isNotEqualTo("password123");
 		assertThat(passwordEncoder.matches("password123", saved.getPasswordHash())).isTrue();
 		assertThat(response.accessToken()).isNotBlank();
@@ -79,8 +87,47 @@ class AuthServiceTest {
 				"dup@example.com",
 				"password123",
 				"Dup",
+				"User",
+				"0901234567",
+				java.time.LocalDate.of(2000, 1, 15),
 				null)))
 				.isInstanceOf(ConflictException.class);
+	}
+
+	@Test
+	void register_rejectsDuplicatePhone() {
+		when(userRepository.existsByEmail("fresh@example.com")).thenReturn(false);
+		when(userRepository.existsByPhone("0901234567")).thenReturn(true);
+
+		assertThatThrownBy(() -> authService.register(new RegisterRequest(
+				"fresh@example.com",
+				"password123",
+				"Dup",
+				"Phone",
+				"090 123 4567",
+				java.time.LocalDate.of(2000, 1, 15),
+				null)))
+				.isInstanceOf(ConflictException.class)
+				.hasMessage("Phone number already registered");
+	}
+
+	@Test
+	void login_resolvesPhoneNumberIdentifier() {
+		User user = storedUser("login@example.com", "password123", UserRole.STUDENT, true);
+		when(userRepository.findByPhone("+84912345678")).thenReturn(Optional.of(user));
+
+		AuthResponse response = authService.login(new LoginRequest("+84 912 345 678", "password123"));
+
+		assertThat(response.accessToken()).isNotBlank();
+	}
+
+	@Test
+	void login_unknownPhoneUsesGenericError() {
+		when(userRepository.findByPhone("0999999999")).thenReturn(Optional.empty());
+
+		assertThatThrownBy(() -> authService.login(new LoginRequest("0999999999", "password123")))
+				.isInstanceOf(UnauthorizedException.class)
+				.hasMessage("Invalid credentials");
 	}
 
 	@Test
@@ -101,7 +148,7 @@ class AuthServiceTest {
 
 		assertThatThrownBy(() -> authService.login(new LoginRequest("login@example.com", "wrong-password")))
 				.isInstanceOf(UnauthorizedException.class)
-				.hasMessage("Invalid email or password");
+				.hasMessage("Invalid credentials");
 	}
 
 	@Test
@@ -110,7 +157,7 @@ class AuthServiceTest {
 
 		assertThatThrownBy(() -> authService.login(new LoginRequest("missing@example.com", "password123")))
 				.isInstanceOf(UnauthorizedException.class)
-				.hasMessage("Invalid email or password");
+				.hasMessage("Invalid credentials");
 	}
 
 	@Test
@@ -120,7 +167,7 @@ class AuthServiceTest {
 
 		assertThatThrownBy(() -> authService.login(new LoginRequest("inactive@example.com", "password123")))
 				.isInstanceOf(UnauthorizedException.class)
-				.hasMessage("Invalid email or password");
+				.hasMessage("Invalid credentials");
 	}
 
 	private User storedUser(String email, String rawPassword, UserRole role, boolean active) {

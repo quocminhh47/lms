@@ -98,7 +98,7 @@ class CourseCatalogFieldsIntegrationTest {
 						.contentType(MediaType.APPLICATION_JSON)
 						.content(body))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.phone").value("+84 901 234 567"))
+				.andExpect(jsonPath("$.phone").value("+84901234567"))
 				.andExpect(jsonPath("$.dateOfBirth").value("1995-08-20"))
 				.andExpect(jsonPath("$.role").value("STUDENT"));
 	}
