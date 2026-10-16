@@ -1,7 +1,7 @@
 # LMS Business Rules
 
 Canonical reference for LMS business behavior. Services and APIs must follow
-this document. Schema notes reflect Flyway `V1` + `V2` and the current JPA model.
+this document. Schema notes reflect Flyway `V1`–`V4` and the current JPA model.
 
 Status legend used below:
 
