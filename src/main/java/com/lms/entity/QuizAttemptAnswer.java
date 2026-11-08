@@ -23,7 +23,7 @@ import lombok.Setter;
 				columnNames = { "attempt_id", "question_id" }))
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class QuizAttemptAnswer {
 
 	@Id
