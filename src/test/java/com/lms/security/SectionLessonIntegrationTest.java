@@ -290,6 +290,29 @@ class SectionLessonIntegrationTest {
 		assertThat(nodes.get(1).get("title").asText()).isEqualTo("First");
 	}
 
+	@Test
+	void adminCanReorderSectionsWithBulkEndpoint() throws Exception {
+		User instructor = seedUser(UserRole.INSTRUCTOR);
+		User admin = seedUser(UserRole.ADMIN);
+		Course course = seedCourse(instructor, true);
+		Section first = seedSection(course, "First", 0);
+		Section second = seedSection(course, "Second", 1);
+
+		mockMvc.perform(put("/api/courses/" + course.getId() + "/sections/reorder")
+						.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(admin))
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(objectMapper.writeValueAsString(
+								java.util.Map.of("orderedIds", java.util.List.of(second.getId(), first.getId())))))
+				.andExpect(status().isNoContent());
+
+		MvcResult list = mockMvc.perform(get("/api/courses/" + course.getId() + "/sections"))
+				.andExpect(status().isOk())
+				.andReturn();
+		JsonNode nodes = objectMapper.readTree(list.getResponse().getContentAsString());
+		assertThat(nodes.get(0).get("title").asText()).isEqualTo("Second");
+		assertThat(nodes.get(1).get("title").asText()).isEqualTo("First");
+	}
+
 	private String tokenFor(User user) {
 		return jwtService.createToken(user.getId(), user.getEmail(), user.getRole());
 	}
@@ -329,7 +352,8 @@ class SectionLessonIntegrationTest {
 		lesson.setId(UUID.randomUUID());
 		lesson.setTitle(title);
 		lesson.setSection(section);
-		lesson.setLessonType(LessonType.ARTICLE);
+		lesson.setLessonType(LessonType.VIDEO);
+		lesson.setContentUrl("https://cdn.example/lesson.mp4");
 		lesson.setSortOrder(sortOrder);
 		return lessonRepository.save(lesson);
 	}

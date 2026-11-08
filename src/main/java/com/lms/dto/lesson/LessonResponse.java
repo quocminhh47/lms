@@ -12,5 +12,6 @@ public record LessonResponse(
 		LessonType lessonType,
 		String contentUrl,
 		Integer durationSeconds,
-		int sortOrder) {
+		int sortOrder,
+		ArticleSnapshotResponse article) {
 }

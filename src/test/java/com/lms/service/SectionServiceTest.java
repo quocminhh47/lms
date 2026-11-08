@@ -74,6 +74,37 @@ class SectionServiceTest {
 	}
 
 	@Test
+	void create_appendsSortOrderWhenOmitted() {
+		Course course = course(false);
+		Section existing = section(course, "First", 0);
+		when(courseRepository.findById(course.getId())).thenReturn(Optional.of(course));
+		when(sectionRepository.findByCourseIdOrderBySortOrderAsc(course.getId())).thenReturn(List.of(existing));
+		when(sectionRepository.save(any(Section.class))).thenAnswer(inv -> inv.getArgument(0));
+
+		sectionService.create(course.getId(), new CreateSectionRequest("Second", null));
+
+		ArgumentCaptor<Section> captor = ArgumentCaptor.forClass(Section.class);
+		verify(sectionRepository).save(captor.capture());
+		assertThat(captor.getValue().getSortOrder()).isEqualTo(1);
+	}
+
+	@Test
+	void reorder_appliesSequentialSortOrders() {
+		Course course = course(true);
+		Section first = section(course, "A", 5);
+		Section second = section(course, "B", 0);
+		when(courseRepository.findById(course.getId())).thenReturn(Optional.of(course));
+		when(sectionRepository.findByCourseIdOrderBySortOrderAsc(course.getId()))
+				.thenReturn(List.of(first, second));
+
+		sectionService.reorder(course.getId(), List.of(second.getId(), first.getId()));
+
+		assertThat(second.getSortOrder()).isZero();
+		assertThat(first.getSortOrder()).isEqualTo(1);
+		verify(sectionRepository).saveAll(any());
+	}
+
+	@Test
 	void listByCourse_hidesUnpublishedFromNonAdmin() {
 		Course course = course(false);
 		when(courseRepository.findById(course.getId())).thenReturn(Optional.of(course));

@@ -1,5 +1,6 @@
 package com.lms.entity;
 
+import java.time.Instant;
 import java.util.UUID;
 
 import jakarta.persistence.Column;
@@ -46,4 +47,29 @@ public class Lesson {
 
 	@Column(name = "sort_order", nullable = false)
 	private int sortOrder = 0;
+
+	@Enumerated(EnumType.STRING)
+	@Column(name = "article_extraction_status")
+	private ArticleExtractionStatus articleExtractionStatus;
+
+	@Column(name = "article_extracted_title", columnDefinition = "TEXT")
+	private String articleExtractedTitle;
+
+	@Column(name = "article_author", columnDefinition = "TEXT")
+	private String articleAuthor;
+
+	@Column(name = "article_published_at")
+	private Instant articlePublishedAt;
+
+	@Column(name = "article_featured_image_url", columnDefinition = "TEXT")
+	private String articleFeaturedImageUrl;
+
+	@Column(name = "article_content_html", columnDefinition = "TEXT")
+	private String articleContentHtml;
+
+	@Column(name = "article_extracted_at")
+	private Instant articleExtractedAt;
+
+	@Column(name = "article_extraction_error", columnDefinition = "TEXT")
+	private String articleExtractionError;
 }

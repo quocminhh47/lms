@@ -1,20 +1,26 @@
 package com.lms.service;
 
-import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.lms.dto.common.PageResponse;
 import com.lms.dto.user.CreateUserRequest;
 import com.lms.dto.user.UpdateUserRequest;
 import com.lms.dto.user.UserResponse;
 import com.lms.entity.User;
+import com.lms.entity.UserRole;
 import com.lms.exception.ConflictException;
 import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.UserMapper;
 import com.lms.repository.UserRepository;
+import com.lms.repository.spec.UserSpecifications;
+import com.lms.util.PagingSupport;
 import com.lms.util.PhoneNumbers;
 
 @Service
@@ -65,10 +71,29 @@ public class UserService {
 		return userMapper.toResponse(user);
 	}
 
-	public List<UserResponse> list() {
-		return userRepository.findAll().stream()
-				.map(userMapper::toResponse)
-				.toList();
+	public PageResponse<UserResponse> listPage(
+			String q,
+			UserRole role,
+			Boolean active,
+			int page,
+			int size,
+			String sort) {
+		Specification<User> spec = Specification.allOf(
+				UserSpecifications.withSearch(q),
+				UserSpecifications.withRole(role),
+				UserSpecifications.withActive(active));
+
+		Sort effectiveSort = PagingSupport.parseSort(
+				sort,
+				Sort.by(Sort.Direction.DESC, "createdAt"),
+				"createdAt",
+				"fullName",
+				"email");
+
+		Page<User> result = userRepository.findAll(
+				spec,
+				PagingSupport.pageable(page, size, effectiveSort));
+		return PageResponse.from(result.map(userMapper::toResponse));
 	}
 
 	@Transactional

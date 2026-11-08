@@ -20,7 +20,7 @@ import lombok.Setter;
 @Table(name = "questions")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class Question {
 
 	@Id
@@ -40,4 +40,7 @@ public class Question {
 
 	@Column(name = "score_weight", nullable = false)
 	private int scoreWeight = 1;
+
+	@Column(name = "sort_order", nullable = false)
+	private int sortOrder = 0;
 }

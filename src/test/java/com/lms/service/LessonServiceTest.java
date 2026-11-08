@@ -7,8 +7,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -17,6 +19,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -33,9 +37,13 @@ import com.lms.entity.UserRole;
 import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.LessonMapper;
 import com.lms.repository.LessonRepository;
+import com.lms.service.LessonArticlePersistenceService;
 
 @ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
 class LessonServiceTest {
+
+	private final AtomicReference<Lesson> lastSavedLesson = new AtomicReference<>();
 
 	@Mock
 	private LessonRepository lessonRepository;
@@ -46,6 +54,9 @@ class LessonServiceTest {
 	@Mock
 	private EnrollmentService enrollmentService;
 
+	@Mock
+	private LessonArticlePersistenceService lessonArticlePersistenceService;
+
 	private LessonService lessonService;
 
 	@BeforeEach
@@ -54,7 +65,20 @@ class LessonServiceTest {
 				lessonRepository,
 				sectionService,
 				enrollmentService,
-				new LessonMapper());
+				new LessonMapper(),
+				lessonArticlePersistenceService);
+		when(lessonRepository.save(any(Lesson.class))).thenAnswer(invocation -> {
+			Lesson saved = invocation.getArgument(0);
+			lastSavedLesson.set(saved);
+			return saved;
+		});
+		when(lessonRepository.findById(any(UUID.class))).thenAnswer(invocation -> {
+			Lesson saved = lastSavedLesson.get();
+			if (saved != null && saved.getId().equals(invocation.getArgument(0))) {
+				return Optional.of(saved);
+			}
+			return Optional.empty();
+		});
 		SecurityContextHolder.clearContext();
 	}
 
@@ -68,7 +92,6 @@ class LessonServiceTest {
 		Course course = course(true);
 		Section section = section(course);
 		when(sectionService.requireSectionInCourse(section.getId(), course.getId())).thenReturn(section);
-		when(lessonRepository.save(any(Lesson.class))).thenAnswer(inv -> inv.getArgument(0));
 
 		LessonResponse response = lessonService.create(
 				course.getId(),
@@ -128,6 +151,52 @@ class LessonServiceTest {
 	}
 
 	@Test
+	void create_appendsSortOrderWhenOmitted() {
+		Course course = course(true);
+		Section section = section(course);
+		Lesson existing = lesson(section);
+		existing.setSortOrder(4);
+		when(sectionService.requireSectionInCourse(section.getId(), course.getId())).thenReturn(section);
+		when(lessonRepository.findBySectionIdOrderBySortOrderAsc(section.getId()))
+				.thenReturn(List.of(existing));
+
+		lessonService.create(
+				course.getId(),
+				section.getId(),
+				new CreateLessonRequest(
+						"Next",
+						LessonType.ARTICLE,
+						"https://example.com/article.html",
+						null,
+						null));
+
+		ArgumentCaptor<Lesson> captor = ArgumentCaptor.forClass(Lesson.class);
+		verify(lessonRepository).save(captor.capture());
+		assertThat(captor.getValue().getSortOrder()).isEqualTo(5);
+	}
+
+	@Test
+	void reorder_appliesSequentialSortOrders() {
+		Course course = course(true);
+		Section section = section(course);
+		Lesson first = lesson(section);
+		first.setSortOrder(3);
+		Lesson second = lesson(section);
+		second.setId(UUID.randomUUID());
+		second.setTitle("Second");
+		second.setSortOrder(0);
+		when(sectionService.requireSectionInCourse(section.getId(), course.getId())).thenReturn(section);
+		when(lessonRepository.findBySectionIdOrderBySortOrderAsc(section.getId()))
+				.thenReturn(List.of(first, second));
+
+		lessonService.reorder(course.getId(), section.getId(), List.of(second.getId(), first.getId()));
+
+		assertThat(second.getSortOrder()).isZero();
+		assertThat(first.getSortOrder()).isEqualTo(1);
+		verify(lessonRepository).saveAll(any());
+	}
+
+	@Test
 	void update_changesMetadataAndOrder() {
 		Course course = course(true);
 		Section section = section(course);
@@ -135,13 +204,17 @@ class LessonServiceTest {
 		when(sectionService.requireSectionInCourse(section.getId(), course.getId())).thenReturn(section);
 		when(lessonRepository.findByIdAndSectionId(lesson.getId(), section.getId()))
 				.thenReturn(Optional.of(lesson));
-		when(lessonRepository.save(any(Lesson.class))).thenAnswer(inv -> inv.getArgument(0));
 
 		LessonResponse response = lessonService.update(
 				course.getId(),
 				section.getId(),
 				lesson.getId(),
-				new UpdateLessonRequest("Article", LessonType.ARTICLE, null, 0, 9));
+				new UpdateLessonRequest(
+						"Article",
+						LessonType.ARTICLE,
+						"https://example.com/read.html",
+						0,
+						9));
 
 		assertThat(response.title()).isEqualTo("Article");
 		assertThat(response.lessonType()).isEqualTo(LessonType.ARTICLE);

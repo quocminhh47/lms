@@ -1,6 +1,5 @@
 package com.lms.controller;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -15,7 +14,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lms.dto.common.PageResponse;
 import com.lms.dto.course.CourseResponse;
+import com.lms.util.PagingSupport;
 import com.lms.dto.course.CreateCourseRequest;
 import com.lms.dto.course.UpdateCourseRequest;
 import com.lms.service.CourseService;
@@ -49,10 +50,14 @@ public class CourseController {
 	}
 
 	@GetMapping
-	public List<CourseResponse> list(
+	public PageResponse<CourseResponse> list(
 			@RequestParam(required = false) Boolean published,
-			@RequestParam(required = false) UUID instructorId) {
-		return courseService.list(published, instructorId);
+			@RequestParam(required = false) UUID instructorId,
+			@RequestParam(required = false) String q,
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size,
+			@RequestParam(required = false) String sort) {
+		return courseService.listPage(published, instructorId, q, page, size, sort);
 	}
 
 	@PutMapping("/{id}")

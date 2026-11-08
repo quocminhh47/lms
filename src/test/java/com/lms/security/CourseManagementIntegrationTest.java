@@ -104,13 +104,13 @@ class CourseManagementIntegrationTest {
 
 		mockMvc.perform(get("/api/courses"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[?(@.id=='" + published.getId() + "')]").exists())
-				.andExpect(jsonPath("$[?(@.title=='Draft Course')]").doesNotExist());
+				.andExpect(jsonPath("$.content[?(@.id=='" + published.getId() + "')]").exists())
+				.andExpect(jsonPath("$.content[?(@.title=='Draft Course')]").doesNotExist());
 
 		// Non-admin cannot force unpublished listing via query param
 		mockMvc.perform(get("/api/courses").param("published", "false"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[?(@.title=='Draft Course')]").doesNotExist());
+				.andExpect(jsonPath("$.content[?(@.title=='Draft Course')]").doesNotExist());
 	}
 
 	@Test
@@ -145,7 +145,7 @@ class CourseManagementIntegrationTest {
 		mockMvc.perform(get("/api/courses").param("published", "false")
 						.header(HttpHeaders.AUTHORIZATION, "Bearer " + tokenFor(admin)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$[?(@.id=='" + draft.getId() + "')]").exists());
+				.andExpect(jsonPath("$.content[?(@.id=='" + draft.getId() + "')]").exists());
 	}
 
 	@Test

@@ -6,12 +6,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.JpaSort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.lms.dto.common.PageResponse;
 import com.lms.dto.course.CourseResponse;
 import com.lms.dto.course.CreateCourseRequest;
 import com.lms.dto.course.UpdateCourseRequest;
@@ -23,6 +28,8 @@ import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.CourseMapper;
 import com.lms.repository.CourseRepository;
 import com.lms.repository.LessonRepository;
+import com.lms.repository.spec.CourseSpecifications;
+import com.lms.util.PagingSupport;
 
 @Service
 @Transactional(readOnly = true)
@@ -79,31 +86,49 @@ public class CourseService {
 	}
 
 	/**
-	 * Lists courses. Non-admin callers always see published courses only,
-	 * regardless of the {@code published} query parameter.
+	 * Lists courses with server-side pagination. Non-admin callers always see
+	 * published courses only, regardless of the {@code published} query parameter.
 	 */
-	public List<CourseResponse> list(Boolean published, UUID instructorId) {
+	public PageResponse<CourseResponse> listPage(
+			Boolean published,
+			UUID instructorId,
+			String q,
+			int page,
+			int size,
+			String sort) {
 		boolean admin = currentUserIsAdmin();
 		Boolean effectivePublished = admin ? published : Boolean.TRUE;
 
-		List<Course> courses;
-		if (instructorId != null) {
-			courses = courseRepository.findByInstructorId(instructorId);
-			if (effectivePublished != null) {
-				boolean wantPublished = effectivePublished;
-				courses = courses.stream()
-						.filter(course -> course.isPublished() == wantPublished)
-						.toList();
-			}
-		}
-		else if (effectivePublished != null) {
-			courses = courseRepository.findByPublished(effectivePublished);
-		}
-		else {
-			courses = courseRepository.findAll();
-		}
+		Specification<Course> spec = Specification.where(CourseSpecifications.withPublished(effectivePublished))
+				.and(CourseSpecifications.withInstructorId(instructorId))
+				.and(CourseSpecifications.withSearch(q));
 
-		return toResponses(courses);
+		Page<Course> result = courseRepository.findAll(
+				spec,
+				PagingSupport.pageable(page, size, resolveCourseSort(sort)));
+		List<CourseResponse> content = toResponses(result.getContent());
+		return new PageResponse<>(
+				content,
+				result.getNumber(),
+				result.getSize(),
+				result.getTotalElements(),
+				result.getTotalPages(),
+				result.isFirst(),
+				result.isLast());
+	}
+
+	private Sort resolveCourseSort(String sortParam) {
+		if (sortParam != null && sortParam.toLowerCase().startsWith("lessoncount")) {
+			return JpaSort.unsafe(
+					Sort.Direction.DESC,
+					"(SELECT COUNT(l) FROM com.lms.entity.Lesson l WHERE l.section.course.id = alias.id)");
+		}
+		return PagingSupport.parseSort(
+				sortParam,
+				Sort.by(Sort.Direction.DESC, "updatedAt"),
+				"updatedAt",
+				"createdAt",
+				"title");
 	}
 
 	@Transactional
@@ -194,7 +219,7 @@ public class CourseService {
 		}
 	}
 
-	static boolean currentUserIsAdmin() {
+	public static boolean currentUserIsAdmin() {
 		Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 		if (authentication == null) {
 			return false;

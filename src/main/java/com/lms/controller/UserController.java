@@ -1,6 +1,5 @@
 package com.lms.controller;
 
-import java.util.List;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -15,10 +14,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lms.dto.common.PageResponse;
 import com.lms.dto.user.CreateUserRequest;
 import com.lms.dto.user.UpdateUserRequest;
 import com.lms.dto.user.UserResponse;
+import com.lms.entity.UserRole;
 import com.lms.service.UserService;
+import com.lms.util.PagingSupport;
 
 import jakarta.validation.Valid;
 
@@ -51,11 +53,19 @@ public class UserController {
 
 	@GetMapping
 	@PreAuthorize("hasRole('ADMIN')")
-	public List<UserResponse> list(@RequestParam(required = false) String email) {
+	public PageResponse<UserResponse> list(
+			@RequestParam(required = false) String email,
+			@RequestParam(required = false) String q,
+			@RequestParam(required = false) UserRole role,
+			@RequestParam(required = false) Boolean active,
+			@RequestParam(defaultValue = "0") int page,
+			@RequestParam(defaultValue = "20") int size,
+			@RequestParam(required = false) String sort) {
 		if (email != null && !email.isBlank()) {
-			return List.of(userService.getByEmail(email));
+			UserResponse user = userService.getByEmail(email);
+			return new PageResponse<>(java.util.List.of(user), 0, 1, 1, 1, true, true);
 		}
-		return userService.list();
+		return userService.listPage(q, role, active, page, size, sort);
 	}
 
 	/**
