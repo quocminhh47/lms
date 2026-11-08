@@ -12,6 +12,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -48,7 +49,7 @@ public class QuizAttempt {
 	private Boolean passed;
 
 	@Setter(AccessLevel.NONE)
-	@Column(name = "started_at", nullable = false, insertable = false, updatable = false)
+	@Column(name = "started_at", nullable = false, updatable = false)
 	private OffsetDateTime startedAt;
 
 	@Column(name = "submitted_at")
@@ -56,4 +57,11 @@ public class QuizAttempt {
 
 	@Column(name = "expires_at")
 	private OffsetDateTime expiresAt;
+
+	@PrePersist
+	void onPersist() {
+		if (startedAt == null) {
+			startedAt = OffsetDateTime.now();
+		}
+	}
 }

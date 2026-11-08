@@ -16,7 +16,7 @@ import lombok.Setter;
 @Table(name = "quiz_attempt_answer_options")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class QuizAttemptAnswerOption {
 
 	@EmbeddedId
