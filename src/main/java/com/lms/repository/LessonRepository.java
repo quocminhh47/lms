@@ -17,6 +17,14 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
 
 	Optional<Lesson> findByIdAndSectionId(UUID id, UUID sectionId);
 
+	@Query("""
+			SELECT l FROM Lesson l
+			JOIN FETCH l.section s
+			JOIN FETCH s.course c
+			WHERE l.id = :lessonId AND c.id = :courseId
+			""")
+	Optional<Lesson> findByIdAndCourseId(UUID lessonId, UUID courseId);
+
 	long countBySection_Course_Id(UUID courseId);
 
 	@Query("""

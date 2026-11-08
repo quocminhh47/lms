@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lms.dto.common.ReorderIdsRequest;
 import com.lms.dto.lesson.CreateLessonRequest;
 import com.lms.dto.lesson.LessonResponse;
 import com.lms.dto.lesson.UpdateLessonRequest;
@@ -62,6 +63,16 @@ public class LessonController {
 		return lessonService.getById(courseId, sectionId, lessonId);
 	}
 
+	@PutMapping("/reorder")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	@PreAuthorize("hasRole('ADMIN')")
+	public void reorder(
+			@PathVariable UUID courseId,
+			@PathVariable UUID sectionId,
+			@Valid @RequestBody ReorderIdsRequest request) {
+		lessonService.reorder(courseId, sectionId, request.orderedIds());
+	}
+
 	@PutMapping("/{lessonId}")
 	@PreAuthorize("hasRole('ADMIN')")
 	public LessonResponse update(
@@ -70,5 +81,14 @@ public class LessonController {
 			@PathVariable UUID lessonId,
 			@Valid @RequestBody UpdateLessonRequest request) {
 		return lessonService.update(courseId, sectionId, lessonId, request);
+	}
+
+	@PostMapping("/{lessonId}/article/refresh")
+	@PreAuthorize("hasRole('ADMIN')")
+	public LessonResponse refreshArticle(
+			@PathVariable UUID courseId,
+			@PathVariable UUID sectionId,
+			@PathVariable UUID lessonId) {
+		return lessonService.refreshArticle(courseId, sectionId, lessonId);
 	}
 }

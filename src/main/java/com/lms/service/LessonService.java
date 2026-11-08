@@ -1,20 +1,28 @@
 package com.lms.service;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import com.lms.dto.lesson.CreateLessonRequest;
 import com.lms.dto.lesson.LessonResponse;
 import com.lms.dto.lesson.UpdateLessonRequest;
+import com.lms.entity.ArticleExtractionStatus;
 import com.lms.entity.Course;
 import com.lms.entity.Lesson;
+import com.lms.entity.LessonType;
 import com.lms.entity.Section;
 import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.LessonMapper;
 import com.lms.repository.LessonRepository;
+import com.lms.util.ReorderSupport;
 
 @Service
 @Transactional(readOnly = true)
@@ -24,16 +32,19 @@ public class LessonService {
 	private final SectionService sectionService;
 	private final EnrollmentService enrollmentService;
 	private final LessonMapper lessonMapper;
+	private final LessonArticlePersistenceService lessonArticlePersistenceService;
 
 	public LessonService(
 			LessonRepository lessonRepository,
 			SectionService sectionService,
 			EnrollmentService enrollmentService,
-			LessonMapper lessonMapper) {
+			LessonMapper lessonMapper,
+			LessonArticlePersistenceService lessonArticlePersistenceService) {
 		this.lessonRepository = lessonRepository;
 		this.sectionService = sectionService;
 		this.enrollmentService = enrollmentService;
 		this.lessonMapper = lessonMapper;
+		this.lessonArticlePersistenceService = lessonArticlePersistenceService;
 	}
 
 	@Transactional
@@ -48,9 +59,30 @@ public class LessonService {
 		lesson.setLessonType(request.lessonType());
 		lesson.setContentUrl(blankToNull(request.contentUrl()));
 		lesson.setDurationSeconds(request.durationSeconds());
-		lesson.setSortOrder(request.sortOrder() != null ? request.sortOrder() : 0);
+		lesson.setSortOrder(
+				request.sortOrder() != null ? request.sortOrder() : nextSortOrderForSection(sectionId));
+		validateArticleLesson(lesson.getLessonType(), lesson.getContentUrl());
 
-		return lessonMapper.toResponse(lessonRepository.save(lesson));
+		if (lesson.getLessonType() == LessonType.ARTICLE && lesson.getContentUrl() != null) {
+			lesson.setArticleExtractionStatus(ArticleExtractionStatus.PENDING);
+		}
+
+		Lesson saved = lessonRepository.save(lesson);
+		scheduleArticleExtractionIfNeeded(saved, false);
+		return lessonMapper.toResponse(reloadLesson(saved.getId()));
+	}
+
+	@Transactional
+	public void reorder(UUID courseId, UUID sectionId, List<UUID> orderedIds) {
+		sectionService.requireSectionInCourse(sectionId, courseId);
+		List<Lesson> lessons = lessonRepository.findBySectionIdOrderBySortOrderAsc(sectionId);
+		List<UUID> existingIds = lessons.stream().map(Lesson::getId).toList();
+		ReorderSupport.validateFullReorder(existingIds, orderedIds);
+		Map<UUID, Lesson> byId = lessons.stream().collect(Collectors.toMap(Lesson::getId, lesson -> lesson));
+		for (int i = 0; i < orderedIds.size(); i++) {
+			byId.get(orderedIds.get(i)).setSortOrder(i);
+		}
+		lessonRepository.saveAll(lessons);
 	}
 
 	/**
@@ -91,6 +123,7 @@ public class LessonService {
 			UUID lessonId,
 			UpdateLessonRequest request) {
 		Lesson lesson = requireLessonInSection(lessonId, sectionId, courseId);
+		String previousUrl = lesson.getContentUrl();
 
 		if (request.title() != null) {
 			String title = request.title().trim();
@@ -113,11 +146,68 @@ public class LessonService {
 			lesson.setSortOrder(request.sortOrder());
 		}
 
-		return lessonMapper.toResponse(lessonRepository.save(lesson));
+		validateArticleLesson(lesson.getLessonType(), lesson.getContentUrl());
+
+		boolean urlChanged = !Objects.equals(previousUrl, lesson.getContentUrl());
+		if (lesson.getLessonType() == LessonType.ARTICLE && urlChanged) {
+			if (lesson.getContentUrl() == null) {
+				lesson.setArticleExtractionStatus(null);
+				lesson.setArticleExtractionError(null);
+				lesson.setArticleContentHtml(null);
+				lesson.setArticleExtractedTitle(null);
+				lesson.setArticleAuthor(null);
+				lesson.setArticlePublishedAt(null);
+				lesson.setArticleFeaturedImageUrl(null);
+				lesson.setArticleExtractedAt(null);
+			} else {
+				lesson.setArticleExtractionStatus(ArticleExtractionStatus.PENDING);
+				lesson.setArticleExtractionError(null);
+			}
+		}
+
+		Lesson saved = lessonRepository.save(lesson);
+		if (lesson.getLessonType() == LessonType.ARTICLE && urlChanged && lesson.getContentUrl() != null) {
+			scheduleArticleExtractionIfNeeded(saved, false);
+		}
+		return lessonMapper.toResponse(reloadLesson(saved.getId()));
+	}
+
+	@Transactional
+	public LessonResponse refreshArticle(UUID courseId, UUID sectionId, UUID lessonId) {
+		Lesson lesson = requireLessonInSection(lessonId, sectionId, courseId);
+		if (lesson.getLessonType() != LessonType.ARTICLE) {
+			throw new IllegalArgumentException("Only ARTICLE lessons support article refresh");
+		}
+		if (lesson.getContentUrl() == null || lesson.getContentUrl().isBlank()) {
+			throw new IllegalArgumentException("Article URL is required before refresh");
+		}
+		lessonArticlePersistenceService.extractAndPersist(lessonId, true);
+		return lessonMapper.toResponse(reloadLesson(lessonId));
+	}
+
+	private Lesson reloadLesson(UUID lessonId) {
+		return lessonRepository.findById(lessonId)
+				.orElseThrow(() -> new ResourceNotFoundException("Lesson not found: " + lessonId));
+	}
+
+	private void scheduleArticleExtractionIfNeeded(Lesson lesson, boolean refresh) {
+		if (lesson.getLessonType() != LessonType.ARTICLE || lesson.getContentUrl() == null) {
+			return;
+		}
+		UUID lessonId = lesson.getId();
+		if (TransactionSynchronizationManager.isSynchronizationActive()) {
+			TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+				@Override
+				public void afterCommit() {
+					lessonArticlePersistenceService.extractAndPersist(lessonId, refresh);
+				}
+			});
+		} else {
+			lessonArticlePersistenceService.extractAndPersist(lessonId, refresh);
+		}
 	}
 
 	private Lesson requireLessonInSection(UUID lessonId, UUID sectionId, UUID courseId) {
-		// Ensure the section belongs to the course first (hierarchy).
 		sectionService.requireSectionInCourse(sectionId, courseId);
 		return lessonRepository.findByIdAndSectionId(lessonId, sectionId)
 				.orElseThrow(() -> new ResourceNotFoundException(
@@ -136,11 +226,24 @@ public class LessonService {
 		}
 	}
 
+	private static void validateArticleLesson(LessonType lessonType, String contentUrl) {
+		if (lessonType == LessonType.ARTICLE && (contentUrl == null || contentUrl.isBlank())) {
+			throw new IllegalArgumentException("contentUrl is required for ARTICLE lessons");
+		}
+	}
+
 	private static String blankToNull(String value) {
 		if (value == null) {
 			return null;
 		}
 		String trimmed = value.trim();
 		return trimmed.isEmpty() ? null : trimmed;
+	}
+
+	private int nextSortOrderForSection(UUID sectionId) {
+		return lessonRepository.findBySectionIdOrderBySortOrderAsc(sectionId).stream()
+				.mapToInt(Lesson::getSortOrder)
+				.max()
+				.orElse(-1) + 1;
 	}
 }

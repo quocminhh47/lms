@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.lms.dto.common.ReorderIdsRequest;
 import com.lms.dto.section.CreateSectionRequest;
 import com.lms.dto.section.SectionResponse;
 import com.lms.dto.section.UpdateSectionRequest;
@@ -55,6 +56,15 @@ public class SectionController {
 			@PathVariable UUID courseId,
 			@PathVariable UUID sectionId) {
 		return sectionService.getById(courseId, sectionId);
+	}
+
+	@PutMapping("/reorder")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	@PreAuthorize("hasRole('ADMIN')")
+	public void reorder(
+			@PathVariable UUID courseId,
+			@Valid @RequestBody ReorderIdsRequest request) {
+		sectionService.reorder(courseId, request.orderedIds());
 	}
 
 	@PutMapping("/{sectionId}")

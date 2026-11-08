@@ -22,7 +22,7 @@ import lombok.Setter;
 @Table(name = "quiz_attempts")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class QuizAttempt {
 
 	@Id

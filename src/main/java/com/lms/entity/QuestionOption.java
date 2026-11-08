@@ -18,7 +18,7 @@ import lombok.Setter;
 @Table(name = "question_options")
 @Getter
 @Setter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PUBLIC)
 public class QuestionOption {
 
 	@Id
@@ -34,4 +34,7 @@ public class QuestionOption {
 
 	@Column(name = "is_correct", nullable = false)
 	private boolean correct = false;
+
+	@Column(name = "sort_order", nullable = false)
+	private int sortOrder = 0;
 }

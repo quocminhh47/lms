@@ -1,7 +1,9 @@
 package com.lms.service;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +17,7 @@ import com.lms.exception.ResourceNotFoundException;
 import com.lms.mapper.SectionMapper;
 import com.lms.repository.CourseRepository;
 import com.lms.repository.SectionRepository;
+import com.lms.util.ReorderSupport;
 
 @Service
 @Transactional(readOnly = true)
@@ -41,9 +44,23 @@ public class SectionService {
 		section.setId(UUID.randomUUID());
 		section.setTitle(request.title().trim());
 		section.setCourse(course);
-		section.setSortOrder(request.sortOrder() != null ? request.sortOrder() : 0);
+		section.setSortOrder(
+				request.sortOrder() != null ? request.sortOrder() : nextSortOrderForCourse(courseId));
 
 		return sectionMapper.toResponse(sectionRepository.save(section));
+	}
+
+	@Transactional
+	public void reorder(UUID courseId, List<UUID> orderedIds) {
+		requireCourse(courseId);
+		List<Section> sections = sectionRepository.findByCourseIdOrderBySortOrderAsc(courseId);
+		List<UUID> existingIds = sections.stream().map(Section::getId).toList();
+		ReorderSupport.validateFullReorder(existingIds, orderedIds);
+		Map<UUID, Section> byId = sections.stream().collect(Collectors.toMap(Section::getId, section -> section));
+		for (int i = 0; i < orderedIds.size(); i++) {
+			byId.get(orderedIds.get(i)).setSortOrder(i);
+		}
+		sectionRepository.saveAll(sections);
 	}
 
 	public List<SectionResponse> listByCourse(UUID courseId) {
@@ -102,5 +119,12 @@ public class SectionService {
 		if (!course.isPublished() && !CourseService.currentUserIsAdmin()) {
 			throw new ResourceNotFoundException("Course not found: " + course.getId());
 		}
+	}
+
+	private int nextSortOrderForCourse(UUID courseId) {
+		return sectionRepository.findByCourseIdOrderBySortOrderAsc(courseId).stream()
+				.mapToInt(Section::getSortOrder)
+				.max()
+				.orElse(-1) + 1;
 	}
 }

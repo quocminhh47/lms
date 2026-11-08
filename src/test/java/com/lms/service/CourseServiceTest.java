@@ -19,10 +19,14 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 
+import com.lms.dto.common.PageResponse;
 import com.lms.dto.course.CourseResponse;
 import com.lms.dto.course.CreateCourseRequest;
 import com.lms.dto.course.UpdateCourseRequest;
@@ -178,29 +182,31 @@ class CourseServiceTest {
 	}
 
 	@Test
-	void list_forcesPublishedOnlyForNonAdmin() {
+	void listPage_forcesPublishedOnlyForNonAdmin() {
 		Course published = sampleCourse(true);
-		when(courseRepository.findByPublished(true)).thenReturn(List.of(published));
+		when(courseRepository.findAll(any(Specification.class), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(published)));
 		when(lessonRepository.countLessonsGroupedByCourseId(anyCollection())).thenReturn(List.of());
 
-		List<CourseResponse> responses = courseService.list(false, null);
+		PageResponse<CourseResponse> response = courseService.listPage(false, null, null, 0, 20, null);
 
-		assertThat(responses).hasSize(1);
-		assertThat(responses.get(0).published()).isTrue();
-		verify(courseRepository).findByPublished(true);
+		assertThat(response.content()).hasSize(1);
+		assertThat(response.content().get(0).published()).isTrue();
+		verify(courseRepository).findAll(any(Specification.class), any(Pageable.class));
 	}
 
 	@Test
-	void list_allowsUnpublishedFilterForAdmin() {
+	void listPage_allowsUnpublishedFilterForAdmin() {
 		asAdmin();
 		Course unpublished = sampleCourse(false);
-		when(courseRepository.findByPublished(false)).thenReturn(List.of(unpublished));
+		when(courseRepository.findAll(any(Specification.class), any(Pageable.class)))
+				.thenReturn(new PageImpl<>(List.of(unpublished)));
 		when(lessonRepository.countLessonsGroupedByCourseId(anyCollection())).thenReturn(List.of());
 
-		List<CourseResponse> responses = courseService.list(false, null);
+		PageResponse<CourseResponse> response = courseService.listPage(false, null, null, 0, 20, null);
 
-		assertThat(responses).hasSize(1);
-		assertThat(responses.get(0).published()).isFalse();
+		assertThat(response.content()).hasSize(1);
+		assertThat(response.content().get(0).published()).isFalse();
 	}
 
 	@Test
