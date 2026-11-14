@@ -24,4 +24,14 @@ class ArticleHtmlSanitizerTest {
 		assertThat(sanitized).doesNotContain("javascript:");
 		assertThat(sanitized).contains("https://example.com");
 	}
+    @Test
+    void preservesEditorFormattingWithoutUnsafeAttributes() {
+        String sanitized = sanitizer.sanitize(
+                "<p><u>Underline</u><s>Strike</s></p><ol start=\"3\"><li>Third</li></ol>"
+                        + "<img src=\"https://example.com/a.png\" onerror=\"alert(1)\">"
+                        + "<a href=\"JaVaScRiPt:alert(1)\">Bad</a>",
+                "https://example.com");
+        assertThat(sanitized).contains("<u>Underline</u>", "<s>Strike</s>", "start=\"3\"");
+        assertThat(sanitized).doesNotContain("onerror", "alert(1)");
+    }
 }

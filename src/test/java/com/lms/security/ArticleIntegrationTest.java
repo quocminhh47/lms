@@ -203,6 +203,61 @@ class ArticleIntegrationTest {
 				.andExpect(jsonPath("$.title").value("Direct"));
 	}
 
+    @Test
+    void instructorCannotBypassModerationOrReadPrivateDraft() throws Exception {
+        User author = seedUser(UserRole.STUDENT);
+        String id = createArticle(tokenFor(author), "Private", BODY).get("id").asText();
+        String instructorToken = tokenFor(seedUser(UserRole.INSTRUCTOR));
+        mockMvc.perform(get("/api/articles/" + id + "/manage")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + instructorToken))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.contentHtml").doesNotExist());
+        for (String path : new String[] { "/api/admin/articles", "/api/admin/articles/pending" }) {
+            mockMvc.perform(get(path).header(HttpHeaders.AUTHORIZATION, "Bearer " + instructorToken))
+                    .andExpect(status().isForbidden());
+        }
+        for (String action : new String[] { "approve", "publish", "archive", "reject" }) {
+            mockMvc.perform(post("/api/admin/articles/" + id + "/" + action)
+                            .header(HttpHeaders.AUTHORIZATION, "Bearer " + instructorToken)
+                            .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Denied\"}"))
+                    .andExpect(status().isForbidden());
+        }
+        mockMvc.perform(post("/api/articles")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + instructorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Bypass\",\"contentHtml\":\"<p>Body</p>\",\"publishImmediately\":true}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectedDraftCanBeEditedResubmittedAndApproved() throws Exception {
+        String author = tokenFor(seedUser(UserRole.STUDENT));
+        String admin = tokenFor(seedUser(UserRole.ADMIN));
+        JsonNode created = createArticle(author, "Resubmit", BODY);
+        String id = created.get("id").asText();
+        String slug = created.get("slug").asText();
+        mockMvc.perform(get("/api/public/articles/" + slug)).andExpect(status().isNotFound());
+        mockMvc.perform(post("/api/articles/" + id + "/submit").header(HttpHeaders.AUTHORIZATION, "Bearer " + author))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/admin/articles/" + id + "/reject")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + admin)
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"reason\":\"Add sources\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/articles/" + id + "/manage").header(HttpHeaders.AUTHORIZATION, "Bearer " + author))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.rejectionReason").value("Add sources"));
+        mockMvc.perform(put("/api/articles/" + id + "/draft")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + author)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"title\":\"Resubmit\",\"contentHtml\":\"<p>Revised</p>\"}"))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/articles/" + id + "/submit").header(HttpHeaders.AUTHORIZATION, "Bearer " + author))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("PENDING_REVIEW"));
+        mockMvc.perform(post("/api/admin/articles/" + id + "/approve").header(HttpHeaders.AUTHORIZATION, "Bearer " + admin))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/api/public/articles/" + slug)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.contentHtml", containsString("Revised")));
+    }
+
 	private JsonNode createArticle(String token, String title, String contentHtml) throws Exception {
 		return createArticle(token, title, contentHtml, false);
 	}
