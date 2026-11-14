@@ -70,6 +70,8 @@ public class SecurityConfig {
 						// (enrollment ACTIVE/COMPLETED or ADMIN); unpublished → 404.
 						.requestMatchers(HttpMethod.GET, "/api/courses", "/api/courses/**").permitAll()
 						.requestMatchers(HttpMethod.GET, "/api/lessons/*").permitAll()
+						.requestMatchers(HttpMethod.GET, "/api/public/articles", "/api/public/articles/**")
+						.permitAll()
 						.requestMatchers("/error").permitAll()
 						.anyRequest().authenticated())
 				.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

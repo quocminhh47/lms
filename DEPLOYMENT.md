@@ -70,7 +70,8 @@ Actuator is **not** on the classpath; these endpoints are intentional lightweigh
 - Enabled by default (`spring.flyway.enabled=true`).
 - Migrations run on application startup against `DB_URL`.
 - Hibernate validates the schema after migrations (`spring.jpa.hibernate.ddl-auto=validate`).
-- First deploy to an empty Neon database: Flyway applies `V1`…`V6` automatically.
+- First deploy to an empty database: Flyway applies all bundled versioned migrations automatically (currently through `V7`, including the Article CMS).
+- The production profile requires explicit `DB_URL`, `DB_USERNAME`, and `CORS_ALLOWED_ORIGINS`; it does not inherit localhost targets.
 
 ## Build and run Docker locally
 
@@ -142,3 +143,21 @@ Point `platform-ui` `VITE_API_BASE_URL` at the Render service URL (HTTPS).
 7. Seed or create admin user via existing registration/admin flows as needed.
 
 Do **not** commit `.env` or paste real credentials into Git or this file.
+
+## Production readiness audit (Phase 8B)
+
+- Use `SPRING_PROFILES_ACTIVE=prod` (the Dockerfile already sets it), and configure
+  `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `JWT_SECRET`, and `CORS_ALLOWED_ORIGINS`.
+  `DB_URL` must be a PostgreSQL JDBC URL with `sslmode=require` for Neon; do not
+  put credentials into the URL. Set the exact Vercel HTTPS origin in CORS.
+- The pool remains capped at five connections, with one minimum idle connection
+  and a 20-second acquisition timeout. JDBC validation replaces dead connections;
+  a sleeping database or cold backend may still delay requests. No automatic
+  retry is added to article writes, avoiding duplicate create/publish operations.
+- Keep `/health/ready` as the Render readiness path. Health responses expose only
+  UP/DOWN. Database outages can make readiness wait for the pool acquisition timeout.
+- The audit did not access hosted configuration, connect to Neon, run production
+  migrations, deploy, or change DNS. Validate actual environment values manually.
+- Concurrent moderation and simultaneous same-title slug creation still need a
+  dedicated concurrency test and locking/retry design; ordinary workflow tests
+  do not establish safety under competing transactions.

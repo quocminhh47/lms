@@ -21,6 +21,7 @@ public class GlobalExceptionHandler {
 	private static final String USERS_PHONE_UNIQUE_CONSTRAINT = "uq_users_phone";
 	private static final String ENROLLMENTS_USER_COURSE_UNIQUE_CONSTRAINT = "uq_enrollments_user_course";
 	private static final String LESSON_PROGRESS_USER_LESSON_UNIQUE_CONSTRAINT = "uq_lesson_progress_user_lesson";
+	private static final String ARTICLES_SLUG_UNIQUE_CONSTRAINT = "uq_articles_slug";
 
 	@ExceptionHandler(ResourceNotFoundException.class)
 	public ResponseEntity<ErrorResponse> handleNotFound(
@@ -108,6 +109,13 @@ public class GlobalExceptionHandler {
 					request.getRequestURI(),
 					null);
 		}
+		if (isArticlesSlugUniqueViolation(ex)) {
+			return build(
+					HttpStatus.CONFLICT,
+					"Article slug already in use",
+					request.getRequestURI(),
+					List.of("slug: Article slug already in use"));
+		}
 		return build(
 				HttpStatus.INTERNAL_SERVER_ERROR,
 				"A database constraint was violated",
@@ -138,6 +146,11 @@ public class GlobalExceptionHandler {
 		String text = exceptionText(ex).toLowerCase();
 		return text.contains(LESSON_PROGRESS_USER_LESSON_UNIQUE_CONSTRAINT)
 				|| (text.contains("lesson_progress") && text.contains("unique"));
+	}
+
+	public static boolean isArticlesSlugUniqueViolation(DataIntegrityViolationException ex) {
+		String text = exceptionText(ex).toLowerCase();
+		return text.contains(ARTICLES_SLUG_UNIQUE_CONSTRAINT);
 	}
 
 	private static String exceptionText(Throwable ex) {

@@ -16,9 +16,11 @@ public class ArticleHtmlSanitizer {
 				.allowElements(
 						"h1", "h2", "h3", "h4", "h5", "h6",
 						"p", "ul", "ol", "li", "blockquote",
-						"strong", "em", "b", "i", "a", "img",
+						"strong", "em", "b", "i", "u", "s", "a", "img",
 						"figure", "figcaption", "pre", "code", "br", "hr")
 				.allowAttributes("href").onElements("a")
+				.allowAttributes("start").matching(java.util.regex.Pattern.compile("[0-9]+"))
+				.onElements("ol")
 				.allowAttributes("src", "alt", "title").onElements("img")
 				.allowUrlProtocols("http", "https")
 				.requireRelNofollowOnLinks()
